@@ -1,0 +1,43 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --green-100: #f2f8ed;
+  --green-200: #dceccd;
+  --green-300: #bdd9a8;
+  --green-500: #64a34e;
+  --green-600: #4a8e3b;
+  --green-700: #2f7035;
+  --green-800: #255a2f;
+  --green-900: #194224;
+  --text-primary: #1f3523;
+  --text-secondary: #4d6651;
+
+  --font-body: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+  --font-heading: 'Outfit', 'Segoe UI', sans-serif;
+
+  font-family: var(--font-body);
+  line-height: 1.45;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+  color: var(--text-primary);
+  background:
+    radial-gradient(620px 360px at 14% 6%, rgba(163, 214, 120, 0.38), transparent 72%),
+    radial-gradient(500px 340px at 92% 88%, rgba(69, 143, 72, 0.22), transparent 70%),
+    linear-gradient(170deg, #f6fbef 0%, #eef7e7 50%, #e8f3e2 100%);
+}
+
+#root {
+  min-height: 100svh;
+}
