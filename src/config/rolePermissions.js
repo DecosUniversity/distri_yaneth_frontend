@@ -54,13 +54,18 @@ export const MODULE_DEFINITIONS = {
     label: 'Maduracion MP',
     summary: 'Control de maduracion para lotes de materia prima.',
   },
+  production: {
+    key: 'production',
+    label: 'Produccion',
+    summary: 'Procesos de produccion, mermas, insumos y rendimiento.',
+  },
 }
 
 const DEFAULT_ROLE = 'Piloto'
 
 export const ROLE_MODULE_PERMISSIONS = {
-  Administrador: ['dashboard', 'users', 'products', 'inventory', 'entries', 'clients', 'providers', 'vehicles', 'vehicleServices', 'serviceTypes', 'maturation'],
-  Produccion: ['dashboard', 'products', 'inventory', 'maturation'],
+  Administrador: ['dashboard', 'users', 'products', 'inventory', 'entries', 'clients', 'providers', 'vehicles', 'vehicleServices', 'serviceTypes', 'maturation', 'production'],
+  Produccion: ['dashboard', 'products', 'inventory', 'maturation', 'production'],
   Logistica: ['dashboard', 'entries', 'clients', 'providers', 'inventory', 'vehicles', 'vehicleServices', 'serviceTypes', 'maturation'],
   Piloto: ['dashboard'],
 }

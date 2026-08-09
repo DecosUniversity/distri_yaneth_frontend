@@ -8,6 +8,7 @@ import InventoryModule from '../features/inventory/InventoryModule'
 import ProductsModule from '../features/products/ProductsModule'
 import ProvidersModule from '../features/providers/ProvidersModule'
 import MaturationControlModule from '../features/maturation/MaturationControlModule'
+import ProductionModule from '../features/production/ProductionModule'
 import ServiceTypesModule from '../features/serviceTypes/ServiceTypesModule'
 import UsersModule from '../features/users/UsersModule'
 import VehiclesModule from '../features/vehicles/VehiclesModule'
@@ -75,6 +76,7 @@ function DashboardPage({ onLogout, session }) {
   const canUseVehicleServices = canAccessModule(roleName, 'vehicleServices')
   const canUseServiceTypes = canAccessModule(roleName, 'serviceTypes')
   const canUseMaturation = canAccessModule(roleName, 'maturation')
+  const canUseProduction = canAccessModule(roleName, 'production')
 
   return (
     <main className={`dashboard-layout ${isSidebarVisible ? 'sidebar-open' : 'sidebar-hidden'}`}>
@@ -115,6 +117,8 @@ function DashboardPage({ onLogout, session }) {
             <ProvidersModule isActive={activeMenu === 'providers'} token={session.token} />
           ) : activeMenu === 'maturation' && canUseMaturation ? (
             <MaturationControlModule isActive={activeMenu === 'maturation'} token={session.token} />
+          ) : activeMenu === 'production' && canUseProduction ? (
+            <ProductionModule isActive={activeMenu === 'production'} token={session.token} />
           ) : activeMenu === 'serviceTypes' && canUseServiceTypes ? (
             <ServiceTypesModule isActive={activeMenu === 'serviceTypes'} token={session.token} />
           ) : activeMenu === 'vehicles' && canUseVehicles ? (
