@@ -69,6 +69,16 @@ export const addProductionStageRequest = async (processId, payload, token) => {
   return parseResponse(response, 'No se pudo registrar la etapa')
 }
 
+export const updateProductionStageRequest = async (processId, stageId, payload, token) => {
+  const response = await fetch(`${API_BASE_URL}/api/produccion/procesos/${processId}/etapas/${stageId}`, {
+    method: 'PUT',
+    headers: buildHeaders(token),
+    body: JSON.stringify(payload),
+  })
+
+  return parseResponse(response, 'No se pudo actualizar la etapa')
+}
+
 export const addProductionMermaRequest = async (processId, payload, token) => {
   const response = await fetch(`${API_BASE_URL}/api/produccion/procesos/${processId}/mermas`, {
     method: 'POST',

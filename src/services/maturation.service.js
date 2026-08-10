@@ -141,22 +141,3 @@ export const deleteMaturationControlRequest = async (controlId, token) => {
     throw new Error(data?.message || 'No se pudo eliminar control de maduracion')
   }
 }
-
-export const createGreenNetRequest = async (payload, token) => {
-  const response = await fetch(`${API_BASE_URL}/api/maduracion/redes-verdes`, {
-    method: 'POST',
-    headers: buildHeaders(token),
-    body: JSON.stringify(payload),
-  })
-
-  return parseResponse(response, 'No se pudo registrar la red de platano verde')
-}
-
-export const listGreenNetsBySublotRequest = async (sublotId, token) => {
-  const response = await fetch(`${API_BASE_URL}/api/maduracion/redes-verdes/sublote/${sublotId}`, {
-    method: 'GET',
-    headers: buildHeaders(token),
-  })
-
-  return parseResponse(response, 'No se pudieron obtener las redes verdes del sub-lote')
-}

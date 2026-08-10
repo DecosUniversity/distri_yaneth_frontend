@@ -59,14 +59,19 @@ export const MODULE_DEFINITIONS = {
     label: 'Produccion',
     summary: 'Procesos de produccion, mermas, insumos y rendimiento.',
   },
+  greenNets: {
+    key: 'greenNets',
+    label: 'Redes',
+    summary: 'Empaque de sub-lotes verdes como producto terminado en red.',
+  },
 }
 
 const DEFAULT_ROLE = 'Piloto'
 
 export const ROLE_MODULE_PERMISSIONS = {
-  Administrador: ['dashboard', 'users', 'products', 'inventory', 'entries', 'clients', 'providers', 'vehicles', 'vehicleServices', 'serviceTypes', 'maturation', 'production'],
-  Produccion: ['dashboard', 'products', 'inventory', 'maturation', 'production'],
-  Logistica: ['dashboard', 'entries', 'clients', 'providers', 'inventory', 'vehicles', 'vehicleServices', 'serviceTypes', 'maturation'],
+  Administrador: ['dashboard', 'users', 'products', 'inventory', 'entries', 'clients', 'providers', 'vehicles', 'vehicleServices', 'serviceTypes', 'maturation', 'production', 'greenNets'],
+  Produccion: ['dashboard', 'products', 'inventory', 'maturation', 'production', 'greenNets'],
+  Logistica: ['dashboard', 'entries', 'clients', 'providers', 'inventory', 'vehicles', 'vehicleServices', 'serviceTypes', 'maturation', 'greenNets'],
   Piloto: ['dashboard'],
 }
 

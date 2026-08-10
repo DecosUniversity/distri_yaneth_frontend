@@ -522,6 +522,10 @@
   grid-column: span 1;
 }
 
+.widget-card--production {
+  grid-column: span 1;
+}
+
 .inventory-summary {
   margin-top: 16px;
   display: grid;
@@ -1031,6 +1035,10 @@
   }
 
   .widget-card--maturation {
+    grid-column: auto;
+  }
+
+  .widget-card--production {
     grid-column: auto;
   }
 

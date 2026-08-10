@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { listProvidersRequest } from '../../services/provider.service'
 import { listProductsRequest } from '../../services/product.service'
+import { listMaturationLotsRequest } from '../../services/maturation.service'
+import { buildTraceabilityCode, downloadTraceabilityLabelPdf } from '../../utils/traceabilityLabel'
 import {
   createEntradaMercanciaRequest,
   deleteEntradaMercanciaRequest,
@@ -15,7 +17,6 @@ const EMPTY_ENTRY_FORM = {
   id_proveedor: '',
   id_producto: '',
   fecha_vencimiento: '',
-  cantidad_disponible: '',
   costo_unitario: '',
   documento_referencia: '',
 }
@@ -26,7 +27,6 @@ const normalizeEntryPayload = (entryForm) => ({
   id_proveedor: Number(entryForm.id_proveedor),
   id_producto: Number(entryForm.id_producto),
   fecha_vencimiento: entryForm.fecha_vencimiento,
-  cantidad_disponible: Number(entryForm.cantidad_disponible),
   costo_unitario:
     entryForm.costo_unitario === '' ? undefined : Number(entryForm.costo_unitario),
   documento_referencia: entryForm.documento_referencia.trim() || undefined,
@@ -68,11 +68,16 @@ const getEntryRecordState = (entry) =>
 
 const isVisibleEntryRecord = (entry) => ALLOWED_ENTRY_RECORD_STATES.has(getEntryRecordState(entry))
 
+const LOTE_PENDING_STATE = 'pendiente'
+
 function EntriesModule({ token, userName, isActive }) {
   const [entries, setEntries] = useState([])
   const [existencias, setExistencias] = useState([])
   const [providers, setProviders] = useState([])
   const [products, setProducts] = useState([])
+  const [maturationLots, setMaturationLots] = useState([])
+  const [viewMode, setViewMode] = useState('gestion')
+  const [consultaSearchTerm, setConsultaSearchTerm] = useState('')
   const [entryForm, setEntryForm] = useState(EMPTY_ENTRY_FORM)
   const [units, setUnits] = useState([])
   const [addUnitModalOpen, setAddUnitModalOpen] = useState(false)
@@ -94,7 +99,7 @@ function EntriesModule({ token, userName, isActive }) {
   const [detailModalOpen, setDetailModalOpen] = useState(false)
   const [detailUnits, setDetailUnits] = useState([])
   const [detailLoading, setDetailLoading] = useState(false)
-  const [detailEntryId, setDetailEntryId] = useState(null)
+  const [detailEntry, setDetailEntry] = useState(null)
   const [entryUnitSummary, setEntryUnitSummary] = useState({})
   const [existenciasFilter, setExistenciasFilter] = useState({
     id_producto: '',
@@ -117,11 +122,12 @@ function EntriesModule({ token, userName, isActive }) {
     setIsEntriesLoading(true)
 
     try {
-      const [entriesData, providersData, productsData, existenciasData] = await Promise.all([
+      const [entriesData, providersData, productsData, existenciasData, maturationLotsData] = await Promise.all([
         listEntradasMercanciaRequest(token),
         listProvidersRequest(token),
         listProductsRequest(token),
         listExistenciasRequest(token),
+        listMaturationLotsRequest(token),
       ])
 
       const normalizedEntries = (Array.isArray(entriesData) ? entriesData : []).filter(isVisibleEntryRecord)
@@ -129,6 +135,7 @@ function EntriesModule({ token, userName, isActive }) {
       setProviders(Array.isArray(providersData) ? providersData : [])
       setProducts(Array.isArray(productsData) ? productsData : [])
       setExistencias(Array.isArray(existenciasData) ? existenciasData : [])
+      setMaturationLots(Array.isArray(maturationLotsData) ? maturationLotsData : [])
 
       if (normalizedEntries.length > 0) {
         const unitSummaries = await Promise.all(
@@ -168,6 +175,47 @@ function EntriesModule({ token, userName, isActive }) {
     ALLOWED_ENTRY_PRODUCT_TYPES.includes(product.tipo_producto)
   )
   const visibleEntries = entries.filter(isVisibleEntryRecord)
+
+  const lotesByEntrada = useMemo(() => {
+    const map = new Map()
+
+    maturationLots.forEach((lote) => {
+      if (lote.id_entrada_origen !== null && lote.id_entrada_origen !== undefined) {
+        map.set(String(lote.id_entrada_origen), lote)
+      }
+    })
+
+    return map
+  }, [maturationLots])
+
+  const isEntryPendingLote = (entry) => {
+    const lote = lotesByEntrada.get(String(entry.id_entrada))
+
+    if (!lote) {
+      return false
+    }
+
+    return String(lote.estado_registro).trim().toLowerCase() === LOTE_PENDING_STATE
+  }
+
+  const gestionEntries = visibleEntries.filter(isEntryPendingLote)
+
+  const consultaEntries = useMemo(() => {
+    const term = consultaSearchTerm.trim().toLowerCase()
+
+    if (!term) {
+      return visibleEntries
+    }
+
+    return visibleEntries.filter((entry) => {
+      const lote = lotesByEntrada.get(String(entry.id_entrada))
+
+      return `${entry.nombre_empresa || ''} ${entry.producto_nombre || ''} ${entry.documento_referencia || ''} ${entry.receptor_nombre || ''} ${lote?.estado_registro || ''}`
+        .toLowerCase()
+        .includes(term)
+    })
+  }, [visibleEntries, consultaSearchTerm, lotesByEntrada])
+
   const getProductUnitMeasure = (productId) => {
     const product = products.find((item) => String(item.id_producto) === String(productId))
     return product?.unidad_medida || 'kg'
@@ -245,22 +293,26 @@ function EntriesModule({ token, userName, isActive }) {
     try {
       const payload = normalizeEntryPayload(entryForm)
 
-      if (Array.isArray(units) && units.length > 0) {
-        const totalWeight = units.reduce((sum, unit) => sum + (Number(unit.peso) || 0), 0)
-
-        if (Number.isNaN(totalWeight) || totalWeight <= 0) {
-          setEntriesError('El peso total debe ser mayor a 0 cuando agrega unidades')
-          setIsEntrySubmitting(false)
-          return
-        }
-
-        payload.cantidad_disponible = totalWeight
-        payload.unidades = units.map((u, idx) => ({
-          unidad_codigo: String(idx + 1),
-          peso: Number(u.peso) || 0,
-          fecha_pesos: u.fecha_pesos || undefined,
-        }))
+      if (!Array.isArray(units) || units.length === 0) {
+        setEntriesError('Añade al menos una unidad con su peso para registrar la entrada')
+        setIsEntrySubmitting(false)
+        return
       }
+
+      const totalWeight = units.reduce((sum, unit) => sum + (Number(unit.peso) || 0), 0)
+
+      if (Number.isNaN(totalWeight) || totalWeight <= 0) {
+        setEntriesError('El peso total debe ser mayor a 0')
+        setIsEntrySubmitting(false)
+        return
+      }
+
+      payload.cantidad_disponible = totalWeight
+      payload.unidades = units.map((u, idx) => ({
+        unidad_codigo: String(idx + 1),
+        peso: Number(u.peso) || 0,
+        fecha_pesos: u.fecha_pesos || undefined,
+      }))
 
       await createEntradaMercanciaRequest(payload, token)
       setEntriesNotice('Entrada de mercancia registrada correctamente')
@@ -319,14 +371,14 @@ function EntriesModule({ token, userName, isActive }) {
     await confirmModalConfig.onConfirm()
   }
 
-  const openEntryDetail = async (entryId) => {
+  const openEntryDetail = async (entry) => {
     setDetailUnits([])
-    setDetailEntryId(entryId)
+    setDetailEntry(entry)
     setDetailLoading(true)
     setDetailModalOpen(true)
 
     try {
-      const units = await listUnitsByEntradaRequest(entryId, token)
+      const units = await listUnitsByEntradaRequest(entry.id_entrada, token)
       setDetailUnits(Array.isArray(units) ? units : [])
     } catch (error) {
       setEntriesError(error.message || 'No se pudieron obtener las unidades')
@@ -338,7 +390,7 @@ function EntriesModule({ token, userName, isActive }) {
   const closeEntryDetail = () => {
     setDetailModalOpen(false)
     setDetailUnits([])
-    setDetailEntryId(null)
+    setDetailEntry(null)
   }
 
   const handleExistenciasFilterChange = (event) => {
@@ -531,6 +583,74 @@ function EntriesModule({ token, userName, isActive }) {
     }
   }
 
+  const handleDownloadEntryLabel = (entry) => {
+    const lote = lotesByEntrada.get(String(entry.id_entrada))
+    const code = buildTraceabilityCode({
+      id_proveedor: entry.id_proveedor,
+      id_entrada: entry.id_entrada,
+      id_lote: lote?.id_lote_mp,
+      id_producto: entry.id_producto,
+    })
+
+    downloadTraceabilityLabelPdf({
+      code,
+      title: 'Etiqueta de trazabilidad - Entrada',
+      lines: [
+        `Proveedor: ${entry.nombre_empresa || `#${entry.id_proveedor}`}`,
+        `Producto: ${entry.producto_nombre || `#${entry.id_producto}`}`,
+        `Entrada: #${entry.id_entrada}`,
+        `Lote MP: ${lote ? `#${lote.id_lote_mp}` : 'N/A (insumo)'}`,
+        `Fecha: ${formatDateTime(entry.fecha_recepcion)}`,
+      ],
+      fileName: `etiqueta_entrada_${entry.id_entrada}.pdf`,
+    })
+  }
+
+  const handlePrintEntryDetail = (entry, entryUnits) => {
+    const doc = new jsPDF()
+    const generatedAt = new Date().toLocaleString('es-GT')
+
+    doc.setFontSize(14)
+    doc.text(`Detalle de entrada #${entry.id_entrada}`, 14, 15)
+    doc.setFontSize(10)
+    doc.text(`Generado: ${generatedAt}`, 14, 22)
+
+    autoTable(doc, {
+      startY: 28,
+      head: [['Campo', 'Valor']],
+      body: [
+        ['Proveedor', entry.nombre_empresa || `Proveedor #${entry.id_proveedor}`],
+        ['Producto', entry.producto_nombre || `Producto #${entry.id_producto}`],
+        ['Fecha recepcion', formatDateTime(entry.fecha_recepcion)],
+        ['Vencimiento', `${formatDateOnly(entry.fecha_vencimiento)} (${isExpiredDate(entry.fecha_vencimiento) ? 'Vencido' : 'Vigente'})`],
+        ['Costo unitario', formatQuantity(entry.costo_unitario)],
+        ['Costo total', formatQuantity(entry.costo_total)],
+        ['Documento de referencia', entry.documento_referencia || '-'],
+        ['Receptor', entry.receptor_nombre || '-'],
+      ],
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [31, 111, 59] },
+    })
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8,
+      head: [['#', 'Codigo unidad', 'Peso (kg)', 'Fecha pesaje']],
+      body:
+        entryUnits.length > 0
+          ? entryUnits.map((unit, idx) => [
+              idx + 1,
+              unit.unidad_codigo || '-',
+              Number(unit.peso).toFixed(3),
+              unit.fecha_pesos ? new Date(unit.fecha_pesos).toLocaleString('es-GT') : '-',
+            ])
+          : [['-', '-', '-', '-']],
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [31, 111, 59] },
+    })
+
+    doc.save(`entrada_${entry.id_entrada}_detalle.pdf`)
+  }
+
   return (
     <section className="panel-card" aria-label="Modulo de entradas de mercancia">
       <div className="providers-header-row">
@@ -562,6 +682,27 @@ function EntriesModule({ token, userName, isActive }) {
             {isEntriesLoading ? 'Actualizando...' : 'Recargar'}
           </button>
         </div>
+      </div>
+
+      <div className="maturation-tab-strip" role="tablist" aria-label="Vista de entradas">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={viewMode === 'gestion'}
+          className={`secondary-button maturation-tab-button ${viewMode === 'gestion' ? 'is-active' : ''}`}
+          onClick={() => setViewMode('gestion')}
+        >
+          Gestion
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={viewMode === 'consultar'}
+          className={`secondary-button maturation-tab-button ${viewMode === 'consultar' ? 'is-active' : ''}`}
+          onClick={() => setViewMode('consultar')}
+        >
+          Consultar
+        </button>
       </div>
 
       {entryModalOpen ? (
@@ -625,20 +766,6 @@ function EntriesModule({ token, userName, isActive }) {
                 </label>
 
                 <label>
-                  Cantidad *
-                  <input
-                    name="cantidad_disponible"
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={entryForm.cantidad_disponible}
-                    onChange={handleEntryFieldChange}
-                    placeholder="0.00"
-                    required
-                  />
-                </label>
-
-                <label>
                   Costo unitario
                   <input
                     name="costo_unitario"
@@ -669,11 +796,10 @@ function EntriesModule({ token, userName, isActive }) {
               </div>
 
               <div style={{ width: '100%', marginTop: '8px' }}>
-                <h4>Unidades pequeñas (opcional)</h4>
+                <h4>Unidades pesadas *</h4>
                 <p style={{ marginTop: 0, marginBottom: 8 }}>
-                  Añade unidades individuales que serán pesadas y registradas. Si añade unidades,
-                  la cantidad se establecerá automáticamente como el peso total de las unidades y se
-                  enviarán los pesos al servidor.
+                  Añade cada unidad con su peso individual. La cantidad de la entrada se calcula
+                  automaticamente como la suma de los pesos registrados aqui.
                 </p>
 
                 <div style={{ marginBottom: 8 }}>
@@ -770,6 +896,27 @@ function EntriesModule({ token, userName, isActive }) {
       {entriesError ? <p className="feedback error">{entriesError}</p> : null}
       {entriesNotice ? <p className="feedback success">{entriesNotice}</p> : null}
 
+      {viewMode === 'consultar' ? (
+        <div className="maturation-filter-panel">
+          <div className="maturation-filter-grid">
+            <label className="maturation-filter-field">
+              <span className="maturation-filter-label">Buscar</span>
+              <input
+                type="text"
+                value={consultaSearchTerm}
+                onChange={(event) => setConsultaSearchTerm(event.target.value)}
+                placeholder="Proveedor, producto, documento o receptor"
+                className="maturation-filter-input"
+              />
+            </label>
+          </div>
+        </div>
+      ) : (
+        <p className="widget-muted" style={{ margin: '8px 0 0' }}>
+          Mostrando unicamente entradas de materia prima aun no aceptadas en maduracion.
+        </p>
+      )}
+
       <div className="providers-table-wrap table-limited">
         <table className="providers-table">
           <thead>
@@ -779,26 +926,32 @@ function EntriesModule({ token, userName, isActive }) {
               <th>Producto</th>
               <th>Cantidad</th>
               <th>Estado</th>
+              {viewMode === 'consultar' ? <th>Estado maduracion</th> : null}
               <th>Peso total unidades</th>
-              <th>Costo total</th>
               <th>Vencimiento</th>
-              <th>Documento</th>
-              <th>Receptor</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {visibleEntries.length === 0 && !isEntriesLoading ? (
+            {(viewMode === 'gestion' ? gestionEntries : consultaEntries).length === 0 && !isEntriesLoading ? (
               <tr>
-                <td colSpan="11" className="empty-table-cell">
-                  No hay entradas registradas.
+                <td colSpan={viewMode === 'consultar' ? 9 : 8} className="empty-table-cell">
+                  {viewMode === 'gestion'
+                    ? 'No hay entradas pendientes de aceptar en maduracion.'
+                    : 'No hay entradas registradas.'}
                 </td>
               </tr>
             ) : null}
 
-            {visibleEntries.map((entry, index) => (
+            {(viewMode === 'gestion' ? gestionEntries : consultaEntries).map((entry, index) => (
               (() => {
                 const entryUnit = getProductUnitMeasure(entry.id_producto)
+                const lote = lotesByEntrada.get(String(entry.id_entrada))
+                const maturationStateLabel = lote
+                  ? String(lote.estado_registro).trim().toLowerCase() === LOTE_PENDING_STATE
+                    ? 'Pendiente de aceptar'
+                    : 'Aceptado en maduracion'
+                  : 'N/A (insumo)'
 
                 return (
               <tr key={`${entry.id_entrada}-${entry.id_existencia || 'na'}-${index}`}>
@@ -811,19 +964,20 @@ function EntriesModule({ token, userName, isActive }) {
                     : `${entry.cantidad_disponible ?? '-'} lbs`}
                 </td>
                 <td>{isExpiredDate(entry.fecha_vencimiento) ? 'Vencido' : 'Vigente'}</td>
+                {viewMode === 'consultar' ? <td>{maturationStateLabel}</td> : null}
                 <td>
                   {(entryUnitSummary[entry.id_entrada]?.count || 0) > 0
                     ? `${(entryUnitSummary[entry.id_entrada]?.totalWeight || 0).toFixed(3)} ${entryUnit}`
                     : '-'}
                 </td>
-                <td>{formatQuantity(entry.costo_total)}</td>
                 <td>{formatDateOnly(entry.fecha_vencimiento)}</td>
-                <td>{entry.documento_referencia || '-'}</td>
-                <td>{entry.receptor_nombre || '-'}</td>
                 <td className="table-actions">
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" className="secondary-button" onClick={() => openEntryDetail(entry.id_entrada)}>
+                    <button type="button" className="secondary-button" onClick={() => openEntryDetail(entry)}>
                       Ver detalle
+                    </button>
+                    <button type="button" className="secondary-button" onClick={() => handleDownloadEntryLabel(entry)}>
+                      Etiqueta
                     </button>
                     <button
                       type="button"
@@ -842,13 +996,61 @@ function EntriesModule({ token, userName, isActive }) {
         </table>
       </div>
 
-      {detailModalOpen ? (
+      {detailModalOpen && detailEntry ? (
         <div className="modal-backdrop">
           <div className="modal-card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h4>Unidades - Entrada #{detailEntryId}</h4>
-              <button type="button" className="secondary-button" onClick={closeEntryDetail}>Cerrar</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <h4 style={{ margin: 0 }}>Detalle de entrada #{detailEntry.id_entrada}</h4>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" className="secondary-button" onClick={() => handlePrintEntryDetail(detailEntry, detailUnits)}>
+                  Imprimir detalle
+                </button>
+                <button type="button" className="secondary-button" onClick={closeEntryDetail}>Cerrar</button>
+              </div>
             </div>
+
+            <div className="providers-table-wrap table-limited" style={{ marginTop: 12 }}>
+              <table className="providers-table">
+                <tbody>
+                  <tr>
+                    <td>Proveedor</td>
+                    <td>{detailEntry.nombre_empresa || `Proveedor #${detailEntry.id_proveedor}`}</td>
+                  </tr>
+                  <tr>
+                    <td>Producto</td>
+                    <td>{detailEntry.producto_nombre || `Producto #${detailEntry.id_producto}`}</td>
+                  </tr>
+                  <tr>
+                    <td>Fecha recepcion</td>
+                    <td>{formatDateTime(detailEntry.fecha_recepcion)}</td>
+                  </tr>
+                  <tr>
+                    <td>Vencimiento</td>
+                    <td>{formatDateOnly(detailEntry.fecha_vencimiento)} ({isExpiredDate(detailEntry.fecha_vencimiento) ? 'Vencido' : 'Vigente'})</td>
+                  </tr>
+                  <tr>
+                    <td>Costo unitario</td>
+                    <td>{formatQuantity(detailEntry.costo_unitario)}</td>
+                  </tr>
+                  <tr>
+                    <td>Costo total</td>
+                    <td>{formatQuantity(detailEntry.costo_total)}</td>
+                  </tr>
+                  <tr>
+                    <td>Documento de referencia</td>
+                    <td>{detailEntry.documento_referencia || '-'}</td>
+                  </tr>
+                  <tr>
+                    <td>Receptor</td>
+                    <td>{detailEntry.receptor_nombre || '-'}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="maturation-section-divider" aria-hidden="true" />
+
+            <h4>Unidades</h4>
 
             {detailLoading ? (
               <p>Cargando unidades...</p>
@@ -927,6 +1129,8 @@ function EntriesModule({ token, userName, isActive }) {
         </div>
       ) : null}
 
+      {viewMode === 'consultar' ? (
+      <>
       <div className="providers-header-row" style={{ marginTop: '18px' }}>
         <div>
           <h3>Existencias Totales</h3>
@@ -1031,6 +1235,8 @@ function EntriesModule({ token, userName, isActive }) {
           </tbody>
         </table>
       </div>
+      </>
+      ) : null}
     </section>
   )
 }

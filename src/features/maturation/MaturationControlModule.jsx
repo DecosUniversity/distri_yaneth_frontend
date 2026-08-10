@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
-import { listProductsRequest } from '../../services/product.service'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import {
   acceptMaturationLotRequest,
   closeSublotRequest,
-  createGreenNetRequest,
   createMaturationControlRequest,
   deleteMaturationLotRequest,
-  listGreenNetsBySublotRequest,
   listMaturationControlsRequest,
   listMaturationLotsRequest,
   listSublotsRequest,
@@ -14,19 +13,18 @@ import {
 } from '../../services/maturation.service'
 
 const RIPENESS_STATES = ['Verde', 'Sarazo', 'Maduro', 'Sobre maduro']
-const GREEN_RIPENESS_STATE = 'Verde'
 const PENDING_REGISTRATION_STATE = 'Pendiente'
 const SUBLOT_ACTIVE_STATE = 'Activo'
 const SUBLOT_READY_STATE = 'Listo para produccion'
 const SUBLOT_SENT_STATE = 'Enviado a produccion'
 const SUBLOT_GREEN_NET_STATE = 'Derivado a red'
-const FINISHED_PRODUCT_TYPE = 'Producto Terminado'
 const SUBLOT_TABS = [
   { key: SUBLOT_ACTIVE_STATE, label: 'Activos' },
   { key: SUBLOT_READY_STATE, label: 'Listos para produccion' },
   { key: SUBLOT_SENT_STATE, label: 'Enviados a produccion' },
   { key: SUBLOT_GREEN_NET_STATE, label: 'Derivados a red' },
 ]
+const GESTION_SUBLOT_STATES = new Set([SUBLOT_ACTIVE_STATE, SUBLOT_READY_STATE])
 
 const EMPTY_ACCEPT_FORM = { estado_maduracion: 'Verde' }
 const EMPTY_CONTROL_FORM = {
@@ -38,7 +36,6 @@ const EMPTY_CONTROL_FORM = {
 }
 const EMPTY_SPLIT_FORM = { peso_kg: '', observaciones: '' }
 const EMPTY_CLOSE_FORM = { peso_medido_kg: '' }
-const EMPTY_GREEN_NET_FORM = { id_producto: '', peso_kg: '', fecha_vencimiento: '', costo_unitario: '' }
 
 const formatNumber = (value) => {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
@@ -59,27 +56,18 @@ const formatMonthInputValue = (value) => {
   return String(value).slice(0, 7)
 }
 
-const getTodayDateInputValue = () => {
-  const today = new Date()
-  const year = today.getFullYear()
-  const month = String(today.getMonth() + 1).padStart(2, '0')
-  const day = String(today.getDate()).padStart(2, '0')
-
-  return `${year}-${month}-${day}`
-}
-
 const emptyToUndefined = (value) => (value === '' || value === null || value === undefined ? undefined : value)
 
 function MaturationControlModule({ token, isActive }) {
   const [lots, setLots] = useState([])
   const [sublots, setSublots] = useState([])
   const [controls, setControls] = useState([])
-  const [products, setProducts] = useState([])
   const [selectedTab, setSelectedTab] = useState(SUBLOT_ACTIVE_STATE)
   const [filters, setFilters] = useState({ sublote: '', producto: '', mes: '' })
   const [isLoading, setIsLoading] = useState(false)
   const [moduleError, setModuleError] = useState('')
   const [moduleNotice, setModuleNotice] = useState('')
+  const [viewMode, setViewMode] = useState('gestion')
 
   const [acceptModalOpen, setAcceptModalOpen] = useState(false)
   const [lotToAccept, setLotToAccept] = useState(null)
@@ -88,15 +76,14 @@ function MaturationControlModule({ token, isActive }) {
 
   const [detailSublot, setDetailSublot] = useState(null)
   const [detailModalOpen, setDetailModalOpen] = useState(false)
-  const [detailGreenNets, setDetailGreenNets] = useState([])
   const [detailError, setDetailError] = useState('')
   const [detailNotice, setDetailNotice] = useState('')
   const [isSubmittingDetail, setIsSubmittingDetail] = useState(false)
+  const [activeAction, setActiveAction] = useState(null)
 
   const [controlForm, setControlForm] = useState(EMPTY_CONTROL_FORM)
   const [splitForm, setSplitForm] = useState(EMPTY_SPLIT_FORM)
   const [closeForm, setCloseForm] = useState(EMPTY_CLOSE_FORM)
-  const [greenNetForm, setGreenNetForm] = useState(EMPTY_GREEN_NET_FORM)
 
   useEffect(() => {
     if (!isActive) {
@@ -107,22 +94,25 @@ function MaturationControlModule({ token, isActive }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, token])
 
+  const switchToGestionView = () => {
+    setViewMode('gestion')
+    setSelectedTab((current) => (GESTION_SUBLOT_STATES.has(current) ? current : SUBLOT_ACTIVE_STATE))
+  }
+
   const loadInitialData = async () => {
     setModuleError('')
     setIsLoading(true)
 
     try {
-      const [lotsData, sublotsData, controlsData, productsData] = await Promise.all([
+      const [lotsData, sublotsData, controlsData] = await Promise.all([
         listMaturationLotsRequest(token),
         listSublotsRequest(token),
         listMaturationControlsRequest(token),
-        listProductsRequest(token),
       ])
 
       setLots(Array.isArray(lotsData) ? lotsData : [])
       setSublots(Array.isArray(sublotsData) ? sublotsData : [])
       setControls(Array.isArray(controlsData) ? controlsData : [])
-      setProducts(Array.isArray(productsData) ? productsData : [])
     } catch (error) {
       setModuleError(error.message || 'No se pudo cargar informacion de maduracion')
     } finally {
@@ -132,9 +122,6 @@ function MaturationControlModule({ token, isActive }) {
 
   const pendingLots = lots.filter((lot) => lot.estado_registro === PENDING_REGISTRATION_STATE)
   const acceptedLots = lots.filter((lot) => lot.estado_registro !== PENDING_REGISTRATION_STATE)
-  const finishedProducts = products.filter(
-    (product) => String(product.tipo_producto || '').trim() === FINISHED_PRODUCT_TYPE
-  )
 
   const openAcceptModal = (lot) => {
     setLotToAccept(lot)
@@ -231,22 +218,15 @@ function MaturationControlModule({ token, isActive }) {
     return accumulator
   }, {})
 
-  const openDetail = async (sublot) => {
+  const visibleSublotTabs =
+    viewMode === 'gestion' ? SUBLOT_TABS.filter((tab) => GESTION_SUBLOT_STATES.has(tab.key)) : SUBLOT_TABS
+
+  const openDetail = (sublot) => {
     setDetailSublot(sublot)
     setDetailError('')
     setDetailNotice('')
-    setControlForm(EMPTY_CONTROL_FORM)
-    setSplitForm(EMPTY_SPLIT_FORM)
-    setCloseForm(EMPTY_CLOSE_FORM)
-    setGreenNetForm(EMPTY_GREEN_NET_FORM)
+    setActiveAction(null)
     setDetailModalOpen(true)
-
-    try {
-      const nets = await listGreenNetsBySublotRequest(sublot.id_sublote, token)
-      setDetailGreenNets(Array.isArray(nets) ? nets : [])
-    } catch {
-      setDetailGreenNets([])
-    }
   }
 
   const closeDetail = () => {
@@ -256,6 +236,30 @@ function MaturationControlModule({ token, isActive }) {
 
     setDetailModalOpen(false)
     setDetailSublot(null)
+    setActiveAction(null)
+  }
+
+  const openAction = (action) => {
+    setDetailError('')
+    setDetailNotice('')
+
+    if (action === 'control') {
+      setControlForm(EMPTY_CONTROL_FORM)
+    } else if (action === 'split') {
+      setSplitForm(EMPTY_SPLIT_FORM)
+    } else if (action === 'close') {
+      setCloseForm(EMPTY_CLOSE_FORM)
+    }
+
+    setActiveAction(action)
+  }
+
+  const closeAction = () => {
+    if (isSubmittingDetail) {
+      return
+    }
+
+    setActiveAction(null)
   }
 
   const refreshDetailSublot = async (id) => {
@@ -294,6 +298,7 @@ function MaturationControlModule({ token, isActive }) {
       }
 
       const result = await createMaturationControlRequest(payload, token)
+      setActiveAction(null)
       setDetailNotice(
         result?.sublote_promovido
           ? 'Control registrado. El sub-lote alcanzo el umbral tecnico y paso a Listo para produccion.'
@@ -328,6 +333,7 @@ function MaturationControlModule({ token, isActive }) {
       }
 
       const result = await splitSublotRequest(detailSublot.id_sublote, payload, token)
+      setActiveAction(null)
       setDetailNotice(`Sub-lote fraccionado: se creo ${result?.nuevo?.codigo_sublote || 'un nuevo sub-lote'}`)
       setSplitForm(EMPTY_SPLIT_FORM)
       await refreshDetailSublot(detailSublot.id_sublote)
@@ -352,6 +358,7 @@ function MaturationControlModule({ token, isActive }) {
     try {
       const payload = { peso_medido_kg: emptyToUndefined(closeForm.peso_medido_kg) }
       await closeSublotRequest(detailSublot.id_sublote, payload, token)
+      setActiveAction(null)
       setDetailNotice('Sub-lote cerrado: paso a Listo para produccion')
       setCloseForm(EMPTY_CLOSE_FORM)
       await refreshDetailSublot(detailSublot.id_sublote)
@@ -363,42 +370,114 @@ function MaturationControlModule({ token, isActive }) {
     }
   }
 
-  const handleGreenNetFieldChange = (event) => {
-    const { name, value } = event.target
-    setGreenNetForm((previous) => ({ ...previous, [name]: value }))
-  }
-
-  const handleGreenNetSubmit = async (event) => {
-    event.preventDefault()
-    setDetailError('')
-    setDetailNotice('')
-    setIsSubmittingDetail(true)
-
-    try {
-      const payload = {
-        id_sublote: detailSublot.id_sublote,
-        id_producto: Number(greenNetForm.id_producto),
-        peso_kg: Number(greenNetForm.peso_kg),
-        fecha_vencimiento: greenNetForm.fecha_vencimiento,
-        costo_unitario: emptyToUndefined(greenNetForm.costo_unitario),
-      }
-
-      await createGreenNetRequest(payload, token)
-      setDetailNotice('Red de platano verde registrada correctamente')
-      setGreenNetForm(EMPTY_GREEN_NET_FORM)
-      const nets = await listGreenNetsBySublotRequest(detailSublot.id_sublote, token)
-      setDetailGreenNets(Array.isArray(nets) ? nets : [])
-      await refreshDetailSublot(detailSublot.id_sublote)
-      await loadInitialData()
-    } catch (error) {
-      setDetailError(error.message || 'No se pudo registrar la red de platano verde')
-    } finally {
-      setIsSubmittingDetail(false)
-    }
-  }
-
   const isSublotActive = detailSublot?.estado_registro === SUBLOT_ACTIVE_STATE
-  const isSublotGreen = detailSublot?.estado_maduracion === GREEN_RIPENESS_STATE
+
+  const handleDownloadSublotFicha = (sublot) => {
+    if (!sublot) {
+      return
+    }
+
+    const sublotControls = controls
+      .filter((control) => control.id_sublote === sublot.id_sublote)
+      .sort((a, b) => new Date(b.fecha_medicion) - new Date(a.fecha_medicion))
+
+    const doc = new jsPDF()
+    const generatedAt = new Date().toLocaleString('es-GT')
+
+    doc.setFontSize(14)
+    doc.text(`Ficha de trazabilidad - Sub-lote #${sublot.id_sublote} (${sublot.codigo_sublote || '-'})`, 14, 15)
+    doc.setFontSize(10)
+    doc.text(`Generado: ${generatedAt}`, 14, 22)
+
+    autoTable(doc, {
+      startY: 28,
+      head: [['Campo', 'Valor']],
+      body: [
+        ['Lote origen', `#${sublot.id_lote_mp}`],
+        ['Producto', sublot.producto_nombre || `Producto #${sublot.id_producto}`],
+        ['Proveedor', sublot.proveedor_nombre || `Proveedor #${sublot.id_proveedor}`],
+        ['Fecha creacion', sublot.fecha_creacion ? new Date(sublot.fecha_creacion).toLocaleString('es-GT') : '-'],
+        ['Estado maduracion', sublot.estado_maduracion || '-'],
+        ['Estado registro', sublot.estado_registro || '-'],
+        ['Peso inicial (kg)', formatNumber(sublot.peso_inicial_kg)],
+        ['Peso disponible (kg)', formatNumber(sublot.peso_kg)],
+        ['Peso neto maduracion (kg)', formatNumber(sublot.peso_neto_maduracion_kg)],
+        ['Perdida maduracion (kg)', formatNumber(sublot.perdida_maduracion_kg)],
+        ['Observaciones', sublot.observaciones || '-'],
+      ],
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [31, 111, 59] },
+    })
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8,
+      head: [['Fecha', 'Brix', 'Peso medido', 'Materia seca %', 'Temperatura']],
+      body:
+        sublotControls.length > 0
+          ? sublotControls.map((control) => [
+              control.fecha_medicion ? new Date(control.fecha_medicion).toLocaleString('es-GT') : '-',
+              control.grados_brix ?? '-',
+              formatNumber(control.peso_medido_kg),
+              control.porcentaje_materia_seca ?? '-',
+              control.temperatura_cuarto ?? '-',
+            ])
+          : [['-', '-', '-', '-', '-']],
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [31, 111, 59] },
+    })
+
+    doc.save(`sublote_${sublot.id_sublote}_ficha.pdf`)
+  }
+
+  const handleDownloadLoteFicha = (lot) => {
+    if (!lot) {
+      return
+    }
+
+    const loteSublots = sublots.filter((sublot) => sublot.id_lote_mp === lot.id_lote_mp)
+
+    const doc = new jsPDF()
+    const generatedAt = new Date().toLocaleString('es-GT')
+
+    doc.setFontSize(14)
+    doc.text(`Ficha de trazabilidad - Lote #${lot.id_lote_mp}`, 14, 15)
+    doc.setFontSize(10)
+    doc.text(`Generado: ${generatedAt}`, 14, 22)
+
+    autoTable(doc, {
+      startY: 28,
+      head: [['Campo', 'Valor']],
+      body: [
+        ['Entrada origen', lot.id_entrada_origen ? `#${lot.id_entrada_origen}` : '-'],
+        ['Producto', lot.producto_nombre || `Producto #${lot.id_producto}`],
+        ['Proveedor', lot.proveedor_nombre || `Proveedor #${lot.id_proveedor}`],
+        ['Fecha recepcion', lot.fecha_recepcion || '-'],
+        ['Peso inicial (kg)', formatNumber(lot.peso_inicial_kg)],
+        ['Peso disponible (kg)', formatNumber(lot.peso_disponible_kg)],
+        ['Estado', lot.estado_registro || '-'],
+      ],
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [31, 111, 59] },
+    })
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 8,
+      head: [['Sub-lote', 'Estado maduracion', 'Estado registro', 'Peso disponible']],
+      body:
+        loteSublots.length > 0
+          ? loteSublots.map((sublot) => [
+              `#${sublot.id_sublote} (${sublot.codigo_sublote || '-'})`,
+              sublot.estado_maduracion || '-',
+              sublot.estado_registro || '-',
+              formatNumber(sublot.peso_kg),
+            ])
+          : [['-', '-', '-', '-']],
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [31, 111, 59] },
+    })
+
+    doc.save(`lote_${lot.id_lote_mp}_ficha.pdf`)
+  }
 
   return (
     <section className="panel-card" aria-label="Modulo de control de maduracion">
@@ -412,6 +491,29 @@ function MaturationControlModule({ token, isActive }) {
         </button>
       </div>
 
+      <div className="maturation-tab-strip" role="tablist" aria-label="Vista de maduracion">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={viewMode === 'gestion'}
+          className={`secondary-button maturation-tab-button ${viewMode === 'gestion' ? 'is-active' : ''}`}
+          onClick={switchToGestionView}
+        >
+          Gestion
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={viewMode === 'consultar'}
+          className={`secondary-button maturation-tab-button ${viewMode === 'consultar' ? 'is-active' : ''}`}
+          onClick={() => setViewMode('consultar')}
+        >
+          Consultar
+        </button>
+      </div>
+
+      {viewMode === 'gestion' ? (
+      <>
       <div className="providers-header-row" style={{ marginTop: '12px' }}>
         <div>
           <h4 style={{ marginTop: 0 }}>Entradas pendientes de aceptar</h4>
@@ -462,9 +564,9 @@ function MaturationControlModule({ token, isActive }) {
           </tbody>
         </table>
       </div>
-
-      <div className="maturation-section-divider" aria-hidden="true" />
-
+      </>
+      ) : (
+      <>
       <div className="providers-header-row">
         <div>
           <h4 style={{ marginTop: 0 }}>Resumen de lotes</h4>
@@ -484,12 +586,13 @@ function MaturationControlModule({ token, isActive }) {
               <th>Peso disponible</th>
               <th>Consumido</th>
               <th>Estado</th>
+              <th>Ficha</th>
             </tr>
           </thead>
           <tbody>
             {acceptedLots.length === 0 && !isLoading ? (
               <tr>
-                <td colSpan="8" className="empty-table-cell">
+                <td colSpan="9" className="empty-table-cell">
                   Aun no hay lotes aceptados.
                 </td>
               </tr>
@@ -510,17 +613,24 @@ function MaturationControlModule({ token, isActive }) {
                   <td>{formatNumber(lot.peso_disponible_kg)}</td>
                   <td>{formatNumber(consumedPercent)}%</td>
                   <td>{lot.estado_registro || '-'}</td>
+                  <td className="table-actions">
+                    <button type="button" className="secondary-button" onClick={() => handleDownloadLoteFicha(lot)}>
+                      Descargar PDF
+                    </button>
+                  </td>
                 </tr>
               )
             })}
           </tbody>
         </table>
       </div>
+      </>
+      )}
 
       <div className="maturation-section-divider" aria-hidden="true" />
 
       <div className="maturation-tab-strip">
-        {SUBLOT_TABS.map((tab) => (
+        {visibleSublotTabs.map((tab) => (
           <button
             key={tab.key}
             type="button"
@@ -622,6 +732,9 @@ function MaturationControlModule({ token, isActive }) {
                   <button type="button" className="secondary-button" onClick={() => openDetail(sublot)}>
                     Gestionar
                   </button>
+                  <button type="button" className="secondary-button" onClick={() => handleDownloadSublotFicha(sublot)}>
+                    PDF
+                  </button>
                 </td>
               </tr>
             ))}
@@ -684,13 +797,34 @@ function MaturationControlModule({ token, isActive }) {
                   {detailSublot.estado_registro} · Disponible: {formatNumber(detailSublot.peso_kg)} kg
                 </p>
               </div>
-              <button type="button" className="secondary-button" onClick={closeDetail}>
-                Cerrar
-              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" className="secondary-button" onClick={() => handleDownloadSublotFicha(detailSublot)}>
+                  Descargar ficha PDF
+                </button>
+                <button type="button" className="secondary-button" onClick={closeDetail}>
+                  Cerrar
+                </button>
+              </div>
             </div>
 
             {detailError ? <p className="feedback error">{detailError}</p> : null}
             {detailNotice ? <p className="feedback success">{detailNotice}</p> : null}
+
+            {isSublotActive ? (
+              <div className="provider-form-actions" style={{ marginTop: '12px' }}>
+                <button type="button" onClick={() => openAction('control')}>
+                  Registrar control
+                </button>
+                <button type="button" className="secondary-button" onClick={() => openAction('split')}>
+                  Fraccionar sub-lote
+                </button>
+                <button type="button" className="secondary-button" onClick={() => openAction('close')}>
+                  Cerrar maduracion
+                </button>
+              </div>
+            ) : (
+              <p style={{ marginTop: '12px' }}>Este sub-lote no tiene acciones disponibles en su estado actual.</p>
+            )}
 
             <div className="maturation-section-divider" aria-hidden="true" />
 
@@ -726,251 +860,192 @@ function MaturationControlModule({ token, isActive }) {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      ) : null}
 
-            {isSublotActive ? (
-              <form className="provider-form" onSubmit={handleControlSubmit}>
-                <div className="provider-form-grid">
-                  <label>
-                    Grados Brix *
-                    <input
-                      name="grados_brix"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={controlForm.grados_brix}
-                      onChange={handleControlFieldChange}
-                      placeholder="0.00"
-                      required
-                    />
-                  </label>
+      {activeAction === 'control' && detailSublot ? (
+        <div className="modal-backdrop">
+          <div className="modal-card entry-modal-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <div>
+                <h4 style={{ marginBottom: 4 }}>Registrar control · Sub-lote #{detailSublot.id_sublote}</h4>
+                <p style={{ margin: 0 }}>Grados Brix, peso medido y condiciones del cuarto.</p>
+              </div>
+              <button type="button" className="secondary-button" onClick={closeAction}>
+                Cerrar
+              </button>
+            </div>
 
-                  <label>
-                    Peso medido (kg)
-                    <input
-                      name="peso_medido_kg"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={controlForm.peso_medido_kg}
-                      onChange={handleControlFieldChange}
-                      placeholder="0.00"
-                    />
-                    <small>Necesario para cerrar la maduracion (perdida por deshidratacion).</small>
-                  </label>
+            {detailError ? <p className="feedback error">{detailError}</p> : null}
 
-                  <label>
-                    Materia seca (%)
-                    <input
-                      name="porcentaje_materia_seca"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={controlForm.porcentaje_materia_seca}
-                      onChange={handleControlFieldChange}
-                      placeholder="0.00"
-                    />
-                  </label>
+            <form className="provider-form" onSubmit={handleControlSubmit} style={{ marginTop: '16px' }}>
+              <div className="provider-form-grid">
+                <label>
+                  Grados Brix *
+                  <input
+                    name="grados_brix"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={controlForm.grados_brix}
+                    onChange={handleControlFieldChange}
+                    placeholder="0.00"
+                    required
+                  />
+                </label>
 
-                  <label>
-                    Temperatura cuarto
-                    <input
-                      name="temperatura_cuarto"
-                      type="number"
-                      step="0.01"
-                      value={controlForm.temperatura_cuarto}
-                      onChange={handleControlFieldChange}
-                      placeholder="0.00"
-                    />
-                  </label>
+                <label>
+                  Peso medido (kg)
+                  <input
+                    name="peso_medido_kg"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={controlForm.peso_medido_kg}
+                    onChange={handleControlFieldChange}
+                    placeholder="0.00"
+                  />
+                  <small>Necesario para cerrar la maduracion (perdida por deshidratacion).</small>
+                </label>
 
-                  <label>
-                    Observaciones
-                    <input
-                      name="observaciones"
-                      type="text"
-                      value={controlForm.observaciones}
-                      onChange={handleControlFieldChange}
-                      placeholder="Opcional"
-                    />
-                  </label>
-                </div>
+                <label>
+                  Materia seca (%)
+                  <input
+                    name="porcentaje_materia_seca"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={controlForm.porcentaje_materia_seca}
+                    onChange={handleControlFieldChange}
+                    placeholder="0.00"
+                  />
+                </label>
 
-                <div className="provider-form-actions">
-                  <button type="submit" disabled={isSubmittingDetail}>
-                    {isSubmittingDetail ? 'Guardando...' : 'Registrar control'}
-                  </button>
-                </div>
-              </form>
-            ) : null}
+                <label>
+                  Temperatura cuarto
+                  <input
+                    name="temperatura_cuarto"
+                    type="number"
+                    step="0.01"
+                    value={controlForm.temperatura_cuarto}
+                    onChange={handleControlFieldChange}
+                    placeholder="0.00"
+                  />
+                </label>
 
-            <div className="maturation-section-divider" aria-hidden="true" />
+                <label>
+                  Observaciones
+                  <input
+                    name="observaciones"
+                    type="text"
+                    value={controlForm.observaciones}
+                    onChange={handleControlFieldChange}
+                    placeholder="Opcional"
+                  />
+                </label>
+              </div>
 
-            {isSublotActive ? (
-              <>
-                <h4>Fraccionar sub-lote</h4>
-                <form className="provider-form" onSubmit={handleSplitSubmit}>
-                  <div className="provider-form-grid">
-                    <label>
-                      Peso a fraccionar (kg) *
-                      <input
-                        name="peso_kg"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={splitForm.peso_kg}
-                        onChange={handleSplitFieldChange}
-                        placeholder="0.00"
-                        required
-                      />
-                    </label>
+              <div className="provider-form-actions">
+                <button type="submit" disabled={isSubmittingDetail}>
+                  {isSubmittingDetail ? 'Guardando...' : 'Registrar control'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
-                    <label>
-                      Observaciones
-                      <input
-                        name="observaciones"
-                        type="text"
-                        value={splitForm.observaciones}
-                        onChange={handleSplitFieldChange}
-                        placeholder="Ej. capacidad de operacion del dia"
-                      />
-                    </label>
-                  </div>
+      {activeAction === 'split' && detailSublot ? (
+        <div className="modal-backdrop">
+          <div className="modal-card entry-modal-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <div>
+                <h4 style={{ marginBottom: 4 }}>Fraccionar sub-lote #{detailSublot.id_sublote}</h4>
+                <p style={{ margin: 0 }}>Disponible: {formatNumber(detailSublot.peso_kg)} kg</p>
+              </div>
+              <button type="button" className="secondary-button" onClick={closeAction}>
+                Cerrar
+              </button>
+            </div>
 
-                  <div className="provider-form-actions">
-                    <button type="submit" disabled={isSubmittingDetail}>
-                      {isSubmittingDetail ? 'Guardando...' : 'Fraccionar'}
-                    </button>
-                  </div>
-                </form>
+            {detailError ? <p className="feedback error">{detailError}</p> : null}
 
-                <div className="maturation-section-divider" aria-hidden="true" />
+            <form className="provider-form" onSubmit={handleSplitSubmit} style={{ marginTop: '16px' }}>
+              <div className="provider-form-grid">
+                <label>
+                  Peso a fraccionar (kg) *
+                  <input
+                    name="peso_kg"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={splitForm.peso_kg}
+                    onChange={handleSplitFieldChange}
+                    placeholder="0.00"
+                    required
+                  />
+                </label>
 
-                <h4>Cerrar maduracion manualmente</h4>
-                <form className="provider-form" onSubmit={handleCloseSubmit}>
-                  <div className="provider-form-grid">
-                    <label>
-                      Peso medido (kg)
-                      <input
-                        name="peso_medido_kg"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={closeForm.peso_medido_kg}
-                        onChange={handleCloseFieldChange}
-                        placeholder="Usa el ultimo control si se deja vacio"
-                      />
-                    </label>
-                  </div>
+                <label>
+                  Observaciones
+                  <input
+                    name="observaciones"
+                    type="text"
+                    value={splitForm.observaciones}
+                    onChange={handleSplitFieldChange}
+                    placeholder="Ej. capacidad de operacion del dia"
+                  />
+                </label>
+              </div>
 
-                  <div className="provider-form-actions">
-                    <button type="submit" disabled={isSubmittingDetail}>
-                      {isSubmittingDetail ? 'Guardando...' : 'Cerrar y marcar Listo para produccion'}
-                    </button>
-                  </div>
-                </form>
-              </>
-            ) : null}
+              <div className="provider-form-actions">
+                <button type="submit" disabled={isSubmittingDetail}>
+                  {isSubmittingDetail ? 'Guardando...' : 'Fraccionar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
-            {isSublotActive && isSublotGreen ? (
-              <>
-                <div className="maturation-section-divider" aria-hidden="true" />
+      {activeAction === 'close' && detailSublot ? (
+        <div className="modal-backdrop">
+          <div className="modal-card entry-modal-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <div>
+                <h4 style={{ marginBottom: 4 }}>Cerrar maduracion · Sub-lote #{detailSublot.id_sublote}</h4>
+                <p style={{ margin: 0 }}>Pasa el sub-lote a Listo para produccion.</p>
+              </div>
+              <button type="button" className="secondary-button" onClick={closeAction}>
+                Cerrar
+              </button>
+            </div>
 
-                <h4>Platano verde en red</h4>
-                <div className="providers-table-wrap table-limited">
-                  <table className="providers-table">
-                    <thead>
-                      <tr>
-                        <th>Peso (kg)</th>
-                        <th>Usuario</th>
-                        <th>Fecha</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detailGreenNets.length === 0 ? (
-                        <tr>
-                          <td colSpan="3" className="empty-table-cell">
-                            Sin redes registradas.
-                          </td>
-                        </tr>
-                      ) : null}
-                      {detailGreenNets.map((net) => (
-                        <tr key={net.id_red}>
-                          <td>{formatNumber(net.peso_kg)}</td>
-                          <td>{net.usuario_nombre || '-'}</td>
-                          <td>{net.fecha_empaque ? new Date(net.fecha_empaque).toLocaleString('es-GT') : '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+            {detailError ? <p className="feedback error">{detailError}</p> : null}
 
-                <form className="provider-form" onSubmit={handleGreenNetSubmit}>
-                  <div className="provider-form-grid">
-                    <label>
-                      Producto (Platano verde en red) *
-                      <select
-                        name="id_producto"
-                        value={greenNetForm.id_producto}
-                        onChange={handleGreenNetFieldChange}
-                        required
-                      >
-                        <option value="">Selecciona producto terminado</option>
-                        {finishedProducts.map((product) => (
-                          <option key={product.id_producto} value={product.id_producto}>
-                            {product.nombre || `Producto #${product.id_producto}`}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+            <form className="provider-form" onSubmit={handleCloseSubmit} style={{ marginTop: '16px' }}>
+              <div className="provider-form-grid">
+                <label>
+                  Peso medido (kg)
+                  <input
+                    name="peso_medido_kg"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={closeForm.peso_medido_kg}
+                    onChange={handleCloseFieldChange}
+                    placeholder="Usa el ultimo control si se deja vacio"
+                  />
+                </label>
+              </div>
 
-                    <label>
-                      Peso de la red (kg) *
-                      <input
-                        name="peso_kg"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={greenNetForm.peso_kg}
-                        onChange={handleGreenNetFieldChange}
-                        placeholder="0.00"
-                        required
-                      />
-                    </label>
-
-                    <label>
-                      Fecha vencimiento *
-                      <input
-                        name="fecha_vencimiento"
-                        type="date"
-                        value={greenNetForm.fecha_vencimiento}
-                        onChange={handleGreenNetFieldChange}
-                        min={getTodayDateInputValue()}
-                        required
-                      />
-                    </label>
-
-                    <label>
-                      Costo unitario
-                      <input
-                        name="costo_unitario"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={greenNetForm.costo_unitario}
-                        onChange={handleGreenNetFieldChange}
-                        placeholder="0.00"
-                      />
-                    </label>
-                  </div>
-
-                  <div className="provider-form-actions">
-                    <button type="submit" disabled={isSubmittingDetail}>
-                      {isSubmittingDetail ? 'Guardando...' : 'Registrar red'}
-                    </button>
-                  </div>
-                </form>
-              </>
-            ) : null}
+              <div className="provider-form-actions">
+                <button type="submit" disabled={isSubmittingDetail}>
+                  {isSubmittingDetail ? 'Guardando...' : 'Cerrar y marcar Listo para produccion'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}
