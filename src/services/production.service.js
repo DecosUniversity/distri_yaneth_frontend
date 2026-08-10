@@ -22,6 +22,15 @@ const parseResponse = async (response, fallbackMessage) => {
   return data
 }
 
+export const listMermaTypesRequest = async (token) => {
+  const response = await fetch(`${API_BASE_URL}/api/produccion/tipos-merma`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  })
+
+  return parseResponse(response, 'No se pudieron obtener los tipos de merma')
+}
+
 export const listProductionProcessesRequest = async (token) => {
   const response = await fetch(`${API_BASE_URL}/api/produccion/procesos`, {
     method: 'GET',

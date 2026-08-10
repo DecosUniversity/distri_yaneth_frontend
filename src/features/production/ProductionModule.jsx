@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { listMaturationLotsRequest } from '../../services/maturation.service'
+import { listReadyForProductionRequest } from '../../services/maturation.service'
 import { listProductsRequest } from '../../services/product.service'
 import {
   addProductionColdRoomRequest,
@@ -10,14 +10,13 @@ import {
   deleteProductionProcessRequest,
   finalizeProductionProcessRequest,
   getProductionProcessRequest,
+  listMermaTypesRequest,
   listProductionProcessesRequest,
 } from '../../services/production.service'
 
-const LOT_READY_STATE = 'Completo'
 const FINISHED_PRODUCT_TYPE = 'Producto Terminado'
+const INSUMO_PRODUCT_TYPE = 'Insumo'
 const PRODUCTION_STAGES = ['Pelado', 'Corte', 'Fritura', 'Embalaje']
-const MERMA_CATEGORIES = ['Cascara', 'Punta', 'Cuaches', 'Coccion', 'Quemados', 'Otra']
-const INPUT_TYPES = ['Aceite', 'Bolsas de empaque', 'Bolsas de basura', 'Otro']
 const PROCESS_ACTIVE_STATE = 'En proceso'
 const PROCESS_PAUSED_STATE = 'Pausado'
 const PROCESS_FINISHED_STATE = 'Finalizado'
@@ -28,7 +27,7 @@ const PROCESS_TABS = [
 ]
 
 const EMPTY_PROCESS_FORM = {
-  id_lote_mp: '',
+  id_sublote: '',
   id_producto_resultado: '',
   cantidad_ingresada_kg: '',
   fecha_inicio: '',
@@ -49,14 +48,14 @@ const EMPTY_STAGE_FORM = {
 }
 
 const EMPTY_MERMA_FORM = {
-  categoria_merma: 'Cascara',
+  id_tipo_merma: '',
   id_etapa: '',
   cantidad_kg: '',
   observaciones: '',
 }
 
 const EMPTY_INPUT_FORM = {
-  tipo_insumo: 'Aceite',
+  id_producto: '',
   id_etapa: '',
   cantidad: '',
   unidad_medida: 'Unidad',
@@ -112,8 +111,9 @@ const emptyToUndefined = (value) => (value === '' || value === null || value ===
 
 function ProductionModule({ token, isActive }) {
   const [processes, setProcesses] = useState([])
-  const [lots, setLots] = useState([])
+  const [sublots, setSublots] = useState([])
   const [products, setProducts] = useState([])
+  const [mermaTypes, setMermaTypes] = useState([])
   const [processForm, setProcessForm] = useState(EMPTY_PROCESS_FORM)
   const [selectedTab, setSelectedTab] = useState(PROCESS_ACTIVE_STATE)
   const [filters, setFilters] = useState({ proceso: '', producto: '', mes: '' })
@@ -148,15 +148,17 @@ function ProductionModule({ token, isActive }) {
     setIsLoading(true)
 
     try {
-      const [processesData, lotsData, productsData] = await Promise.all([
+      const [processesData, sublotsData, productsData, mermaTypesData] = await Promise.all([
         listProductionProcessesRequest(token),
-        listMaturationLotsRequest(token),
+        listReadyForProductionRequest(token),
         listProductsRequest(token),
+        listMermaTypesRequest(token),
       ])
 
       setProcesses(Array.isArray(processesData) ? processesData : [])
-      setLots(Array.isArray(lotsData) ? lotsData : [])
+      setSublots(Array.isArray(sublotsData) ? sublotsData : [])
       setProducts(Array.isArray(productsData) ? productsData : [])
+      setMermaTypes(Array.isArray(mermaTypesData) ? mermaTypesData : [])
     } catch (error) {
       setModuleError(error.message || 'No se pudo cargar informacion de produccion')
     } finally {
@@ -178,15 +180,19 @@ function ProductionModule({ token, isActive }) {
     setFilters({ proceso: '', producto: '', mes: '' })
   }
 
-  const availableLots = lots.filter(
-    (lot) => lot.estado_registro === LOT_READY_STATE && Number(lot.peso_disponible_kg) > 0
-  )
+  const availableSublots = sublots.filter((sublot) => Number(sublot.peso_kg) > 0)
 
   const finishedProducts = products.filter(
     (product) => String(product.tipo_producto || '').trim() === FINISHED_PRODUCT_TYPE
   )
 
-  const selectedLotForForm = lots.find((lot) => String(lot.id_lote_mp) === String(processForm.id_lote_mp))
+  const insumoProducts = products.filter(
+    (product) => String(product.tipo_producto || '').trim() === INSUMO_PRODUCT_TYPE
+  )
+
+  const selectedSublotForForm = sublots.find(
+    (sublot) => String(sublot.id_sublote) === String(processForm.id_sublote)
+  )
 
   const handleProcessSubmit = async (event) => {
     event.preventDefault()
@@ -196,7 +202,7 @@ function ProductionModule({ token, isActive }) {
 
     try {
       const payload = {
-        id_lote_mp: Number(processForm.id_lote_mp),
+        id_sublote: Number(processForm.id_sublote),
         id_producto_resultado: Number(processForm.id_producto_resultado),
         cantidad_ingresada_kg: Number(processForm.cantidad_ingresada_kg),
         fecha_inicio: emptyToUndefined(processForm.fecha_inicio),
@@ -316,7 +322,7 @@ function ProductionModule({ token, isActive }) {
 
     try {
       const payload = {
-        categoria_merma: mermaForm.categoria_merma,
+        id_tipo_merma: Number(mermaForm.id_tipo_merma),
         id_etapa: emptyToUndefined(mermaForm.id_etapa),
         cantidad_kg: Number(mermaForm.cantidad_kg),
         observaciones: emptyToUndefined(mermaForm.observaciones.trim()),
@@ -347,7 +353,7 @@ function ProductionModule({ token, isActive }) {
 
     try {
       const payload = {
-        tipo_insumo: insumoForm.tipo_insumo,
+        id_producto: Number(insumoForm.id_producto),
         id_etapa: emptyToUndefined(insumoForm.id_etapa),
         cantidad: Number(insumoForm.cantidad),
         unidad_medida: insumoForm.unidad_medida.trim(),
@@ -440,7 +446,7 @@ function ProductionModule({ token, isActive }) {
     const matchesProceso =
       !procesoTerm ||
       String(process.id_proceso || '').toLowerCase().includes(procesoTerm) ||
-      String(process.id_lote_mp || '').toLowerCase().includes(procesoTerm)
+      String(process.id_sublote || '').toLowerCase().includes(procesoTerm)
 
     const matchesProducto =
       !productoTerm ||
@@ -476,17 +482,17 @@ function ProductionModule({ token, isActive }) {
         <h4 style={{ marginTop: 0 }}>Iniciar proceso de produccion</h4>
         <div className="provider-form-grid">
           <label>
-            Lote de materia prima *
-            <select name="id_lote_mp" value={processForm.id_lote_mp} onChange={handleProcessFieldChange} required>
-              <option value="">Selecciona lote</option>
-              {availableLots.map((lot) => (
-                <option key={lot.id_lote_mp} value={lot.id_lote_mp}>
-                  {`#${lot.id_lote_mp} - ${lot.producto_nombre || `Producto ${lot.id_producto}`} (disponible ${formatNumber(lot.peso_disponible_kg)} kg)`}
+            Sub-lote listo para produccion *
+            <select name="id_sublote" value={processForm.id_sublote} onChange={handleProcessFieldChange} required>
+              <option value="">Selecciona sub-lote</option>
+              {availableSublots.map((sublot) => (
+                <option key={sublot.id_sublote} value={sublot.id_sublote}>
+                  {`#${sublot.id_sublote} (${sublot.codigo_sublote}) - ${sublot.producto_nombre || `Producto ${sublot.id_producto}`} (disponible ${formatNumber(sublot.peso_kg)} kg)`}
                 </option>
               ))}
             </select>
-            {selectedLotForForm ? (
-              <small>Disponible: {formatNumber(selectedLotForForm.peso_disponible_kg)} kg</small>
+            {selectedSublotForForm ? (
+              <small>Disponible: {formatNumber(selectedSublotForForm.peso_kg)} kg</small>
             ) : null}
           </label>
 
@@ -642,7 +648,7 @@ function ProductionModule({ token, isActive }) {
           <thead>
             <tr>
               <th>Proceso</th>
-              <th>Lote</th>
+              <th>Sub-lote</th>
               <th>Producto resultado</th>
               <th>Ingresado (kg)</th>
               <th>Producido (kg)</th>
@@ -666,7 +672,9 @@ function ProductionModule({ token, isActive }) {
             {filteredProcesses.map((process) => (
               <tr key={process.id_proceso}>
                 <td>#{process.id_proceso}</td>
-                <td>#{process.id_lote_mp}</td>
+                <td>
+                  #{process.id_sublote} ({process.codigo_sublote})
+                </td>
                 <td>{process.producto_resultado_nombre || `Producto #${process.id_producto_resultado}`}</td>
                 <td>{formatNumber(process.cantidad_ingresada_kg)}</td>
                 <td>{formatNumber(process.cantidad_producida_kg)}</td>
@@ -698,7 +706,7 @@ function ProductionModule({ token, isActive }) {
               <div>
                 <h4 style={{ marginBottom: 4 }}>Proceso #{selectedProcess.id_proceso}</h4>
                 <p style={{ margin: 0 }}>
-                  Lote #{selectedProcess.id_lote_mp} · {selectedProcess.producto_resultado_nombre || 'Producto sin nombre'} ·{' '}
+                  Sub-lote #{selectedProcess.id_sublote} · {selectedProcess.producto_resultado_nombre || 'Producto sin nombre'} ·{' '}
                   {selectedProcess.estado_proceso}
                 </p>
               </div>
@@ -876,7 +884,7 @@ function ProductionModule({ token, isActive }) {
                   ) : null}
                   {(selectedProcess.mermas || []).map((merma) => (
                     <tr key={merma.id_merma}>
-                      <td>{merma.categoria_merma}</td>
+                      <td>{merma.nombre_merma}</td>
                       <td>{formatNumber(merma.cantidad_kg)}</td>
                       <td>{merma.id_etapa ? `#${merma.id_etapa}` : '-'}</td>
                       <td>{merma.fecha_registro ? new Date(merma.fecha_registro).toLocaleString('es-GT') : '-'}</td>
@@ -891,10 +899,11 @@ function ProductionModule({ token, isActive }) {
                 <div className="provider-form-grid">
                   <label>
                     Categoria *
-                    <select name="categoria_merma" value={mermaForm.categoria_merma} onChange={handleMermaFieldChange} required>
-                      {MERMA_CATEGORIES.map((category) => (
-                        <option key={category} value={category}>
-                          {category}
+                    <select name="id_tipo_merma" value={mermaForm.id_tipo_merma} onChange={handleMermaFieldChange} required>
+                      <option value="">Selecciona categoria</option>
+                      {mermaTypes.map((mermaType) => (
+                        <option key={mermaType.id_tipo_merma} value={mermaType.id_tipo_merma}>
+                          {mermaType.nombre_merma}
                         </option>
                       ))}
                     </select>
@@ -969,7 +978,7 @@ function ProductionModule({ token, isActive }) {
                   ) : null}
                   {(selectedProcess.insumos || []).map((insumo) => (
                     <tr key={insumo.id_consumo}>
-                      <td>{insumo.tipo_insumo}</td>
+                      <td>{insumo.producto_nombre}</td>
                       <td>{formatNumber(insumo.cantidad)}</td>
                       <td>{insumo.unidad_medida}</td>
                       <td>{insumo.fecha_registro ? new Date(insumo.fecha_registro).toLocaleString('es-GT') : '-'}</td>
@@ -983,11 +992,12 @@ function ProductionModule({ token, isActive }) {
               <form className="provider-form" onSubmit={handleInsumoSubmit}>
                 <div className="provider-form-grid">
                   <label>
-                    Tipo *
-                    <select name="tipo_insumo" value={insumoForm.tipo_insumo} onChange={handleInsumoFieldChange} required>
-                      {INPUT_TYPES.map((tipo) => (
-                        <option key={tipo} value={tipo}>
-                          {tipo}
+                    Insumo *
+                    <select name="id_producto" value={insumoForm.id_producto} onChange={handleInsumoFieldChange} required>
+                      <option value="">Selecciona insumo</option>
+                      {insumoProducts.map((product) => (
+                        <option key={product.id_producto} value={product.id_producto}>
+                          {product.nombre || `Producto #${product.id_producto}`}
                         </option>
                       ))}
                     </select>

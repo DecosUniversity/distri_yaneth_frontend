@@ -63,6 +63,54 @@ export const deleteMaturationLotRequest = async (lotId, token) => {
   }
 }
 
+export const acceptMaturationLotRequest = async (lotId, payload, token) => {
+  const response = await fetch(`${API_BASE_URL}/api/maduracion/lotes/${lotId}/aceptar`, {
+    method: 'POST',
+    headers: buildHeaders(token),
+    body: JSON.stringify(payload),
+  })
+
+  return parseResponse(response, 'No se pudo aceptar el lote para maduracion')
+}
+
+export const listSublotsRequest = async (token) => {
+  const response = await fetch(`${API_BASE_URL}/api/maduracion/sublotes`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  })
+
+  return parseResponse(response, 'No se pudieron obtener los sub-lotes')
+}
+
+export const listReadyForProductionRequest = async (token) => {
+  const response = await fetch(`${API_BASE_URL}/api/maduracion/sublotes/listos-para-produccion`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  })
+
+  return parseResponse(response, 'No se pudieron obtener los sub-lotes listos para produccion')
+}
+
+export const splitSublotRequest = async (sublotId, payload, token) => {
+  const response = await fetch(`${API_BASE_URL}/api/maduracion/sublotes/${sublotId}/fraccionar`, {
+    method: 'POST',
+    headers: buildHeaders(token),
+    body: JSON.stringify(payload),
+  })
+
+  return parseResponse(response, 'No se pudo fraccionar el sub-lote')
+}
+
+export const closeSublotRequest = async (sublotId, payload, token) => {
+  const response = await fetch(`${API_BASE_URL}/api/maduracion/sublotes/${sublotId}/cerrar`, {
+    method: 'POST',
+    headers: buildHeaders(token),
+    body: JSON.stringify(payload),
+  })
+
+  return parseResponse(response, 'No se pudo cerrar la maduracion del sub-lote')
+}
+
 export const listMaturationControlsRequest = async (token) => {
   const response = await fetch(`${API_BASE_URL}/api/maduracion/controles`, {
     method: 'GET',
@@ -92,4 +140,23 @@ export const deleteMaturationControlRequest = async (controlId, token) => {
     const data = await response.json().catch(() => null)
     throw new Error(data?.message || 'No se pudo eliminar control de maduracion')
   }
+}
+
+export const createGreenNetRequest = async (payload, token) => {
+  const response = await fetch(`${API_BASE_URL}/api/maduracion/redes-verdes`, {
+    method: 'POST',
+    headers: buildHeaders(token),
+    body: JSON.stringify(payload),
+  })
+
+  return parseResponse(response, 'No se pudo registrar la red de platano verde')
+}
+
+export const listGreenNetsBySublotRequest = async (sublotId, token) => {
+  const response = await fetch(`${API_BASE_URL}/api/maduracion/redes-verdes/sublote/${sublotId}`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  })
+
+  return parseResponse(response, 'No se pudieron obtener las redes verdes del sub-lote')
 }

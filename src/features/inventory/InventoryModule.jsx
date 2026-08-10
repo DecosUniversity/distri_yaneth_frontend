@@ -148,8 +148,9 @@ function InventoryModule({ token, isActive }) {
         const tipo = fruitMode ? 'Fruta para produccion' : (product ? (product.tipo_producto || row.tipo_producto || '-') : (row.tipo_producto || '-'))
         const unidad = product ? product.unidad_medida || '-' : (row.unidad_medida || '-')
         const stockMinimo = fruitMode ? 0 : (product ? Number(product.stock_minimo ?? 0) : 0)
+        const loteId = row.id_lote_mp === null || row.id_lote_mp === undefined ? null : Number(row.id_lote_mp)
         const key = fruitMode
-          ? `${productId}::${expirationKey}`
+          ? `${productId}::${loteId ?? expirationKey}`
           : `${productId}::${expirationKey}::${tipo}`
 
         const existing = groups.get(key)
@@ -162,6 +163,8 @@ function InventoryModule({ token, isActive }) {
             stock_minimo: stockMinimo,
             stock_actual: quantity,
             fecha_vencimiento: expirationDate,
+            id_lote_mp: fruitMode ? loteId : null,
+            peso_recibido: fruitMode ? Number(row.peso_inicial_kg || 0) : null,
           })
           return
         }
@@ -441,11 +444,11 @@ function InventoryModule({ token, isActive }) {
               <thead>
                 <tr>
                   <th>Producto</th>
-                  <th>Tipo</th>
+                  <th>Lote</th>
                   <th>Unidad</th>
-                  <th>Stock actual</th>
-                  <th>Estado</th>
-                  <th>Vencimiento</th>
+                  <th>Recibido</th>
+                  <th>Disponible</th>
+                  <th>Consumido</th>
                 </tr>
               </thead>
               <tbody>
@@ -457,41 +460,22 @@ function InventoryModule({ token, isActive }) {
                   </tr>
                 ) : null}
 
-                {frutaInventory.map((item) => (
-                  <tr
-                    key={`fruta-${item.id_producto}-${item.tipo_producto}-${item.fecha_vencimiento || 'sin-vencimiento'}`}
-                    className={
-                      item.expirationStatus === 'expired'
-                        ? 'inventory-row-expired'
-                        : item.expirationStatus === 'near'
-                          ? 'inventory-row-warning'
-                          : ''
-                    }
-                  >
-                    <td>{item.nombre}</td>
-                    <td>{item.tipo_producto}</td>
-                    <td>{item.unidad_medida}</td>
-                    <td>{formatNumber(item.fruta_stock_actual ?? item.stock_actual)}</td>
-                    <td>
-                      <span
-                        className={`inventory-status ${
-                          item.expirationStatus === 'expired'
-                            ? 'expired'
-                            : item.expirationStatus === 'near'
-                              ? 'warning'
-                              : 'normal'
-                        }`}
-                      >
-                        {item.expirationStatus === 'expired'
-                          ? 'Vencido'
-                          : item.expirationStatus === 'near'
-                            ? 'Vencimiento cercano'
-                            : 'Vigente'}
-                      </span>
-                    </td>
-                    <td>{formatDate(item.fecha_vencimiento)}</td>
-                  </tr>
-                ))}
+                {frutaInventory.map((item) => {
+                  const received = Number(item.peso_recibido) || 0
+                  const available = Number(item.fruta_stock_actual ?? item.stock_actual) || 0
+                  const consumedPercent = received > 0 ? ((received - available) / received) * 100 : 0
+
+                  return (
+                    <tr key={`fruta-${item.id_producto}-${item.id_lote_mp ?? 'sin-lote'}`}>
+                      <td>{item.nombre}</td>
+                      <td>{item.id_lote_mp ? `#${item.id_lote_mp}` : '-'}</td>
+                      <td>{item.unidad_medida}</td>
+                      <td>{formatNumber(item.peso_recibido)}</td>
+                      <td>{formatNumber(item.fruta_stock_actual ?? item.stock_actual)}</td>
+                      <td>{formatNumber(consumedPercent)}%</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
