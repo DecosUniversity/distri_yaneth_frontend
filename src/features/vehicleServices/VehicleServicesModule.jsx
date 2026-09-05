@@ -7,6 +7,9 @@ import {
   listVehicleServicesRequest,
   updateVehicleServiceRequest,
 } from '../../services/vehicleService.service'
+import CollapsibleSection from '../../components/dashboard/CollapsibleSection'
+import ReloadButton from '../../components/common/ReloadButton'
+import { notifyError, notifySuccess } from '../../utils/toast'
 
 const EMPTY_FORM = {
   id_vehiculo: '',
@@ -132,16 +135,20 @@ function VehicleServicesModule({ token, isActive }) {
       if (editingServiceId) {
         await updateVehicleServiceRequest(editingServiceId, payload, token)
         setNoticeMessage('Servicio de vehiculo actualizado correctamente')
+        notifySuccess('Servicio de vehiculo actualizado correctamente')
       } else {
         await createVehicleServiceRequest(payload, token)
         setNoticeMessage('Servicio de vehiculo creado correctamente')
+        notifySuccess('Servicio de vehiculo creado correctamente')
       }
 
       setForm(EMPTY_FORM)
       setEditingServiceId(null)
       await loadData()
     } catch (error) {
-      setErrorMessage(error.message || 'No se pudo guardar el servicio de vehiculo')
+      const message = error.message || 'No se pudo guardar el servicio de vehiculo'
+      setErrorMessage(message)
+      notifyError(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -192,13 +199,16 @@ function VehicleServicesModule({ token, isActive }) {
     try {
       await deleteVehicleServiceRequest(serviceId, token)
       setNoticeMessage('Servicio de vehiculo eliminado correctamente')
+      notifySuccess('Servicio de vehiculo eliminado correctamente')
       await loadData()
 
       if (editingServiceId === serviceId) {
         cancelEdit()
       }
     } catch (error) {
-      setErrorMessage(error.message || 'No se pudo eliminar el servicio de vehiculo')
+      const message = error.message || 'No se pudo eliminar el servicio de vehiculo'
+      setErrorMessage(message)
+      notifyError(message)
     }
   }
 
@@ -209,19 +219,12 @@ function VehicleServicesModule({ token, isActive }) {
 
   return (
     <section className="panel-card" aria-label="Control de servicios de vehiculo">
-      <div className="providers-header-row">
+      <ReloadButton onClick={loadData} isLoading={isLoading} />
+      <div className="providers-header-row has-reload-button">
         <div>
           <h3>Servicios de Vehiculo</h3>
           <p>Registro de mantenimientos, costos y proximo kilometraje por unidad.</p>
         </div>
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={loadData}
-          disabled={isLoading}
-        >
-          {isLoading ? 'Actualizando...' : 'Recargar'}
-        </button>
       </div>
 
       <form className="provider-form" onSubmit={handleSubmit}>
@@ -335,6 +338,9 @@ function VehicleServicesModule({ token, isActive }) {
       {errorMessage ? <p className="feedback error">{errorMessage}</p> : null}
       {noticeMessage ? <p className="feedback success">{noticeMessage}</p> : null}
 
+      <div className="maturation-section-divider" aria-hidden="true" />
+
+      <CollapsibleSection title="Listado de servicios" defaultCollapsed storageKey="module:collapsed:list:vehicleServices">
       <div className="providers-table-wrap">
         <table className="providers-table">
           <thead>
@@ -384,6 +390,7 @@ function VehicleServicesModule({ token, isActive }) {
           </tbody>
         </table>
       </div>
+      </CollapsibleSection>
     </section>
   )
 }

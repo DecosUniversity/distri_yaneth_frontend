@@ -1,15 +1,8 @@
 import jsPDF from 'jspdf'
 
-const padSegment = (value) => {
-  if (value === null || value === undefined || value === '') {
-    return '0000'
-  }
-
-  return String(value).padStart(4, '0')
-}
-
-export const buildTraceabilityCode = ({ id_proveedor, id_entrada, id_lote, id_producto }) =>
-  `P${padSegment(id_proveedor)}-E${padSegment(id_entrada)}-L${padSegment(id_lote)}-PT${padSegment(id_producto)}`
+// El codigo de trazabilidad (ABREVIATURA_PRODUCTO-YYMMDD-###) ahora se genera y guarda en el
+// servidor al crear la entrada de mercancia (columna codigo_lote), y viaja con cada registro
+// relacionado (entrada, proceso de produccion, red verde). Ya no se calcula en el cliente.
 
 export const downloadTraceabilityLabelPdf = ({ code, title, lines, fileName }) => {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [100, 60] })

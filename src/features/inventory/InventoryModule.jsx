@@ -3,6 +3,8 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { listInventoryRequest } from '../../services/inventory.service'
 import { listProductsRequest } from '../../services/product.service'
+import CollapsibleSection from '../../components/dashboard/CollapsibleSection'
+import ReloadButton from '../../components/common/ReloadButton'
 
 const LOW_STOCK_ONLY_OPTIONS = [
   { label: 'Todos', value: 'all' },
@@ -328,7 +330,8 @@ function InventoryModule({ token, isActive }) {
 
   return (
     <section className="panel-card" aria-label="Modulo de inventario">
-      <div className="providers-header-row">
+      <ReloadButton onClick={loadData} isLoading={isLoading} />
+      <div className="providers-header-row has-reload-button">
         <div>
           <h3>Inventario</h3>
           <p>Consulta el stock por producto, el estado de stock bajo y su fecha de vencimiento.</p>
@@ -342,14 +345,6 @@ function InventoryModule({ token, isActive }) {
               disabled={isLoading || isExportingPdf || (generalInventory.length + frutaInventory.length === 0)}
           >
             {isExportingPdf ? 'Generando PDF...' : 'Descargar PDF'}
-          </button>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={loadData}
-            disabled={isLoading}
-          >
-            {isLoading ? 'Actualizando...' : 'Recargar'}
           </button>
         </div>
       </div>
@@ -411,6 +406,8 @@ function InventoryModule({ token, isActive }) {
       {errorMessage ? <p className="feedback error">{errorMessage}</p> : null}
       {noticeMessage ? <p className="feedback success">{noticeMessage}</p> : null}
 
+      <div className="maturation-section-divider" aria-hidden="true" />
+
       <div className="inventory-summary">
         <article className="inventory-metric">
           <span>Total productos</span>
@@ -439,6 +436,7 @@ function InventoryModule({ token, isActive }) {
             </div>
           </div>
 
+          <CollapsibleSection title="Listado" defaultCollapsed storageKey="module:collapsed:list:inventory:fruta">
           <div className="providers-table-wrap table-limited">
             <table className="providers-table">
               <thead>
@@ -479,9 +477,13 @@ function InventoryModule({ token, isActive }) {
               </tbody>
             </table>
           </div>
+          </CollapsibleSection>
         </section>
       ) : null}
 
+      <div className="maturation-section-divider" aria-hidden="true" />
+
+      <CollapsibleSection title="Listado de inventario" defaultCollapsed storageKey="module:collapsed:list:inventory:general">
       <div className="providers-table-wrap table-limited">
         <table className="providers-table">
           <thead>
@@ -547,6 +549,7 @@ function InventoryModule({ token, isActive }) {
           </tbody>
         </table>
       </div>
+      </CollapsibleSection>
     </section>
   )
 }

@@ -30,3 +30,12 @@ export const listInventoryRequest = async (token) => {
 
   return parseResponse(response, 'No se pudo obtener inventario')
 }
+
+export const listExistenciasByProductRequest = async (idProducto, token) => {
+  const response = await fetch(`${API_BASE_URL}/api/inventario/existencias?id_producto=${idProducto}`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  })
+
+  return parseResponse(response, 'No se pudieron obtener los lotes disponibles del producto')
+}

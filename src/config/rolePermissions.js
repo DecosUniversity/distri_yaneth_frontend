@@ -64,15 +64,35 @@ export const MODULE_DEFINITIONS = {
     label: 'Redes',
     summary: 'Empaque de sub-lotes verdes como producto terminado en red.',
   },
+  orders: {
+    key: 'orders',
+    label: 'Pedidos',
+    summary: 'Lista de despacho por cliente, sin facturacion.',
+  },
+  routes: {
+    key: 'routes',
+    label: 'Entregas',
+    summary: 'Manifiestos de entrega, asignacion de vehiculo y piloto, salida y cierre.',
+  },
+  returns: {
+    key: 'returns',
+    label: 'Devoluciones',
+    summary: 'Recepcion fisica de devoluciones y resolucion (reingreso o perdida).',
+  },
+  traceability: {
+    key: 'traceability',
+    label: 'Trazabilidad',
+    summary: 'Rastreo completo de un lote, sublote, proceso o producto, de inicio a fin.',
+  },
 }
 
 const DEFAULT_ROLE = 'Piloto'
 
 export const ROLE_MODULE_PERMISSIONS = {
-  Administrador: ['dashboard', 'users', 'products', 'inventory', 'entries', 'clients', 'providers', 'vehicles', 'vehicleServices', 'serviceTypes', 'maturation', 'production', 'greenNets'],
-  Produccion: ['dashboard', 'products', 'inventory', 'maturation', 'production', 'greenNets'],
-  Logistica: ['dashboard', 'entries', 'clients', 'providers', 'inventory', 'vehicles', 'vehicleServices', 'serviceTypes', 'maturation', 'greenNets'],
-  Piloto: ['dashboard'],
+  Administrador: ['dashboard', 'users', 'products', 'inventory', 'entries', 'clients', 'providers', 'vehicles', 'vehicleServices', 'serviceTypes', 'maturation', 'production', 'greenNets', 'orders', 'routes', 'returns', 'traceability'],
+  Produccion: ['dashboard', 'products', 'inventory', 'entries', 'maturation', 'production', 'greenNets', 'returns', 'traceability'],
+  Logistica: ['dashboard', 'entries', 'clients', 'providers', 'inventory', 'vehicles', 'vehicleServices', 'serviceTypes', 'maturation', 'greenNets', 'orders', 'routes', 'returns', 'traceability'],
+  Piloto: ['dashboard', 'routes', 'returns'],
 }
 
 export const getAllowedModuleKeys = (role) => {

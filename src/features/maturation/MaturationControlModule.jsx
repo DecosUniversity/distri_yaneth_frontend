@@ -11,6 +11,8 @@ import {
   listSublotsRequest,
   splitSublotRequest,
 } from '../../services/maturation.service'
+import ReloadButton from '../../components/common/ReloadButton'
+import { notifyError, notifySuccess } from '../../utils/toast'
 
 const RIPENESS_STATES = ['Verde', 'Sarazo', 'Maduro', 'Sobre maduro']
 const PENDING_REGISTRATION_STATE = 'Pendiente'
@@ -153,12 +155,16 @@ function MaturationControlModule({ token, isActive }) {
 
     try {
       await acceptMaturationLotRequest(lotToAccept.id_lote_mp, { estado_maduracion: acceptForm.estado_maduracion }, token)
-      setModuleNotice(`Lote #${lotToAccept.id_lote_mp} aceptado. Se creo el sub-lote A en estado ${acceptForm.estado_maduracion}.`)
+      const successMessage = `Lote #${lotToAccept.id_lote_mp} aceptado. Se creo el sub-lote A en estado ${acceptForm.estado_maduracion}.`
+      setModuleNotice(successMessage)
+      notifySuccess(successMessage)
       setAcceptModalOpen(false)
       setLotToAccept(null)
       await loadInitialData()
     } catch (error) {
-      setModuleError(error.message || 'No se pudo aceptar el lote')
+      const message = error.message || 'No se pudo aceptar el lote'
+      setModuleError(message)
+      notifyError(message)
     } finally {
       setIsSubmittingAccept(false)
     }
@@ -177,9 +183,12 @@ function MaturationControlModule({ token, isActive }) {
     try {
       await deleteMaturationLotRequest(lotId, token)
       setModuleNotice('Lote eliminado correctamente')
+      notifySuccess('Lote eliminado correctamente')
       await loadInitialData()
     } catch (error) {
-      setModuleError(error.message || 'No se pudo eliminar lote')
+      const message = error.message || 'No se pudo eliminar lote'
+      setModuleError(message)
+      notifyError(message)
     }
   }
 
@@ -299,17 +308,19 @@ function MaturationControlModule({ token, isActive }) {
 
       const result = await createMaturationControlRequest(payload, token)
       setActiveAction(null)
-      setDetailNotice(
-        result?.sublote_promovido
-          ? 'Control registrado. El sub-lote alcanzo el umbral tecnico y paso a Listo para produccion.'
-          : 'Control registrado correctamente'
-      )
+      const successMessage = result?.sublote_promovido
+        ? 'Control registrado. El sub-lote alcanzo el umbral tecnico y paso a Listo para produccion.'
+        : 'Control registrado correctamente'
+      setDetailNotice(successMessage)
+      notifySuccess(successMessage)
       setControlForm(EMPTY_CONTROL_FORM)
       const updatedControls = await listMaturationControlsRequest(token)
       setControls(Array.isArray(updatedControls) ? updatedControls : [])
       await refreshDetailSublot(detailSublot.id_sublote)
     } catch (error) {
-      setDetailError(error.message || 'No se pudo registrar el control')
+      const message = error.message || 'No se pudo registrar el control'
+      setDetailError(message)
+      notifyError(message)
     } finally {
       setIsSubmittingDetail(false)
     }
@@ -334,11 +345,15 @@ function MaturationControlModule({ token, isActive }) {
 
       const result = await splitSublotRequest(detailSublot.id_sublote, payload, token)
       setActiveAction(null)
-      setDetailNotice(`Sub-lote fraccionado: se creo ${result?.nuevo?.codigo_sublote || 'un nuevo sub-lote'}`)
+      const successMessage = `Sub-lote fraccionado: se creo ${result?.nuevo?.codigo_sublote || 'un nuevo sub-lote'}`
+      setDetailNotice(successMessage)
+      notifySuccess(successMessage)
       setSplitForm(EMPTY_SPLIT_FORM)
       await refreshDetailSublot(detailSublot.id_sublote)
     } catch (error) {
-      setDetailError(error.message || 'No se pudo fraccionar el sub-lote')
+      const message = error.message || 'No se pudo fraccionar el sub-lote'
+      setDetailError(message)
+      notifyError(message)
     } finally {
       setIsSubmittingDetail(false)
     }
@@ -360,11 +375,14 @@ function MaturationControlModule({ token, isActive }) {
       await closeSublotRequest(detailSublot.id_sublote, payload, token)
       setActiveAction(null)
       setDetailNotice('Sub-lote cerrado: paso a Listo para produccion')
+      notifySuccess('Sub-lote cerrado: paso a Listo para produccion')
       setCloseForm(EMPTY_CLOSE_FORM)
       await refreshDetailSublot(detailSublot.id_sublote)
       await loadInitialData()
     } catch (error) {
-      setDetailError(error.message || 'No se pudo cerrar la maduracion del sub-lote')
+      const message = error.message || 'No se pudo cerrar la maduracion del sub-lote'
+      setDetailError(message)
+      notifyError(message)
     } finally {
       setIsSubmittingDetail(false)
     }
@@ -481,14 +499,12 @@ function MaturationControlModule({ token, isActive }) {
 
   return (
     <section className="panel-card" aria-label="Modulo de control de maduracion">
-      <div className="providers-header-row">
+      <ReloadButton onClick={loadInitialData} isLoading={isLoading} />
+      <div className="providers-header-row has-reload-button">
         <div>
           <h3>Control de Maduracion</h3>
           <p>Acepta entradas pendientes, da seguimiento a sub-lotes y registra mediciones de laboratorio.</p>
         </div>
-        <button type="button" className="secondary-button" onClick={loadInitialData} disabled={isLoading}>
-          {isLoading ? 'Actualizando...' : 'Recargar'}
-        </button>
       </div>
 
       <div className="maturation-tab-strip" role="tablist" aria-label="Vista de maduracion">

@@ -5,6 +5,9 @@ import {
   listUsersRequest,
   resetUserPasswordRequest,
 } from '../../services/user.service'
+import CollapsibleSection from '../../components/dashboard/CollapsibleSection'
+import ReloadButton from '../../components/common/ReloadButton'
+import { notifyError, notifySuccess } from '../../utils/toast'
 
 const ROLE_OPTIONS = ['Administrador', 'Produccion', 'Logistica', 'Piloto']
 
@@ -63,10 +66,13 @@ function UsersModule({ token, isActive }) {
     try {
       await createUserRequest(userForm, token)
       setUsersNotice('Usuario creado correctamente')
+      notifySuccess('Usuario creado correctamente')
       setUserForm(EMPTY_USER_FORM)
       await loadUsers()
     } catch (error) {
-      setUsersError(error.message || 'No se pudo crear usuario')
+      const message = error.message || 'No se pudo crear usuario'
+      setUsersError(message)
+      notifyError(message)
     } finally {
       setIsUserSubmitting(false)
     }
@@ -85,8 +91,11 @@ function UsersModule({ token, isActive }) {
     try {
       await resetUserPasswordRequest(user.id_usuario, newPassword, token)
       setUsersNotice(`Password restablecida para ${user.username}`)
+      notifySuccess(`Password restablecida para ${user.username}`)
     } catch (error) {
-      setUsersError(error.message || 'No se pudo restablecer password')
+      const message = error.message || 'No se pudo restablecer password'
+      setUsersError(message)
+      notifyError(message)
     }
   }
 
@@ -105,27 +114,23 @@ function UsersModule({ token, isActive }) {
     try {
       await deleteUserRequest(user.id_usuario, token)
       setUsersNotice('Usuario eliminado correctamente')
+      notifySuccess('Usuario eliminado correctamente')
       await loadUsers()
     } catch (error) {
-      setUsersError(error.message || 'No se pudo eliminar usuario')
+      const message = error.message || 'No se pudo eliminar usuario'
+      setUsersError(message)
+      notifyError(message)
     }
   }
 
   return (
     <section className="panel-card" aria-label="Modulo de usuarios">
-      <div className="providers-header-row">
+      <ReloadButton onClick={loadUsers} isLoading={isUsersLoading} />
+      <div className="providers-header-row has-reload-button">
         <div>
           <h3>Modulo Usuarios</h3>
           <p>Crear, eliminar y restablecer password de usuarios del sistema.</p>
         </div>
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={loadUsers}
-          disabled={isUsersLoading}
-        >
-          {isUsersLoading ? 'Actualizando...' : 'Recargar'}
-        </button>
       </div>
 
       <form className="provider-form" onSubmit={handleUserSubmit}>
@@ -189,6 +194,9 @@ function UsersModule({ token, isActive }) {
       {usersError ? <p className="feedback error">{usersError}</p> : null}
       {usersNotice ? <p className="feedback success">{usersNotice}</p> : null}
 
+      <div className="maturation-section-divider" aria-hidden="true" />
+
+      <CollapsibleSection title="Listado de usuarios" defaultCollapsed storageKey="module:collapsed:list:users">
       <div className="providers-table-wrap table-limited">
         <table className="providers-table">
           <thead>
@@ -221,7 +229,7 @@ function UsersModule({ token, isActive }) {
                     className="secondary-button"
                     onClick={() => handleResetPassword(user)}
                   >
-                    Reset password
+                    Contraseña
                   </button>
                   <button
                     type="button"
@@ -236,6 +244,7 @@ function UsersModule({ token, isActive }) {
           </tbody>
         </table>
       </div>
+      </CollapsibleSection>
     </section>
   )
 }

@@ -5,6 +5,9 @@ import {
   listVehiclesRequest,
   updateVehicleRequest,
 } from '../../services/vehicle.service'
+import CollapsibleSection from '../../components/dashboard/CollapsibleSection'
+import ReloadButton from '../../components/common/ReloadButton'
+import { notifyError, notifySuccess } from '../../utils/toast'
 
 const VEHICLE_STATES = ['Disponible', 'En ruta', 'Mantenimiento', 'Inactivo']
 
@@ -85,16 +88,20 @@ function VehiclesModule({ token, isActive, roleName }) {
       if (editingVehicleId) {
         await updateVehicleRequest(editingVehicleId, payload, token)
         setVehiclesNotice('Vehiculo actualizado correctamente')
+        notifySuccess('Vehiculo actualizado correctamente')
       } else {
         await createVehicleRequest(payload, token)
         setVehiclesNotice('Vehiculo creado correctamente')
+        notifySuccess('Vehiculo creado correctamente')
       }
 
       setVehicleForm(EMPTY_VEHICLE_FORM)
       setEditingVehicleId(null)
       await loadVehicles()
     } catch (error) {
-      setVehiclesError(error.message || 'No se pudo guardar vehiculo')
+      const message = error.message || 'No se pudo guardar vehiculo'
+      setVehiclesError(message)
+      notifyError(message)
     } finally {
       setIsVehicleSubmitting(false)
     }
@@ -145,31 +152,27 @@ function VehiclesModule({ token, isActive, roleName }) {
     try {
       await deleteVehicleRequest(vehicleId, token)
       setVehiclesNotice('Vehiculo eliminado correctamente')
+      notifySuccess('Vehiculo eliminado correctamente')
       await loadVehicles()
 
       if (editingVehicleId === vehicleId) {
         cancelVehicleEdit()
       }
     } catch (error) {
-      setVehiclesError(error.message || 'No se pudo eliminar vehiculo')
+      const message = error.message || 'No se pudo eliminar vehiculo'
+      setVehiclesError(message)
+      notifyError(message)
     }
   }
 
   return (
     <section className="panel-card" aria-label="Modulo de vehiculos">
-      <div className="providers-header-row">
+      <ReloadButton onClick={loadVehicles} isLoading={isVehiclesLoading} />
+      <div className="providers-header-row has-reload-button">
         <div>
           <h3>Modulo Vehiculos</h3>
           <p>Gestion de flotilla para operaciones logisticas.</p>
         </div>
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={loadVehicles}
-          disabled={isVehiclesLoading}
-        >
-          {isVehiclesLoading ? 'Actualizando...' : 'Recargar'}
-        </button>
       </div>
 
       <form className="provider-form" onSubmit={handleVehicleSubmit}>
@@ -258,6 +261,9 @@ function VehiclesModule({ token, isActive, roleName }) {
       {vehiclesError ? <p className="feedback error">{vehiclesError}</p> : null}
       {vehiclesNotice ? <p className="feedback success">{vehiclesNotice}</p> : null}
 
+      <div className="maturation-section-divider" aria-hidden="true" />
+
+      <CollapsibleSection title="Listado de vehiculos" defaultCollapsed storageKey="module:collapsed:list:vehicles">
       <div className="providers-table-wrap">
         <table className="providers-table">
           <thead>
@@ -313,6 +319,7 @@ function VehiclesModule({ token, isActive, roleName }) {
           </tbody>
         </table>
       </div>
+      </CollapsibleSection>
     </section>
   )
 }

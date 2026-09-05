@@ -5,6 +5,9 @@ import {
   listProductsRequest,
   updateProductRequest,
 } from '../../services/product.service'
+import CollapsibleSection from '../../components/dashboard/CollapsibleSection'
+import ReloadButton from '../../components/common/ReloadButton'
+import { notifyError, notifySuccess } from '../../utils/toast'
 
 const PRODUCT_TYPES = ['Materia Prima', 'Producto Terminado', 'Insumo', 'Venta Directa']
 const UNIT_OPTIONS = ['Lb', 'Kg', 'Unidades', 'Litros', 'Galones']
@@ -89,16 +92,20 @@ function ProductsModule({ token, isActive }) {
       if (editingProductId) {
         await updateProductRequest(editingProductId, payload, token)
         setProductsNotice('Producto actualizado correctamente')
+        notifySuccess('Producto actualizado correctamente')
       } else {
         await createProductRequest(payload, token)
         setProductsNotice('Producto creado correctamente')
+        notifySuccess('Producto creado correctamente')
       }
 
       setProductForm(EMPTY_PRODUCT_FORM)
       setEditingProductId(null)
       await loadProducts()
     } catch (error) {
-      setProductsError(error.message || 'No se pudo guardar producto')
+      const message = error.message || 'No se pudo guardar producto'
+      setProductsError(message)
+      notifyError(message)
     } finally {
       setIsProductSubmitting(false)
     }
@@ -139,31 +146,27 @@ function ProductsModule({ token, isActive }) {
     try {
       await deleteProductRequest(productId, token)
       setProductsNotice('Producto eliminado correctamente')
+      notifySuccess('Producto eliminado correctamente')
       await loadProducts()
 
       if (editingProductId === productId) {
         cancelProductEdit()
       }
     } catch (error) {
-      setProductsError(error.message || 'No se pudo eliminar producto')
+      const message = error.message || 'No se pudo eliminar producto'
+      setProductsError(message)
+      notifyError(message)
     }
   }
 
   return (
     <section className="panel-card" aria-label="Modulo de productos">
-      <div className="providers-header-row">
+      <ReloadButton onClick={loadProducts} isLoading={isProductsLoading} />
+      <div className="providers-header-row has-reload-button">
         <div>
           <h3>Modulo Productos</h3>
           <p>Gestion de productos con tipo, stock minimo y precio sugerido.</p>
         </div>
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={loadProducts}
-          disabled={isProductsLoading}
-        >
-          {isProductsLoading ? 'Actualizando...' : 'Recargar'}
-        </button>
       </div>
 
       <form className="provider-form" onSubmit={handleProductSubmit}>
@@ -275,6 +278,9 @@ function ProductsModule({ token, isActive }) {
       {productsError ? <p className="feedback error">{productsError}</p> : null}
       {productsNotice ? <p className="feedback success">{productsNotice}</p> : null}
 
+      <div className="maturation-section-divider" aria-hidden="true" />
+
+      <CollapsibleSection title="Listado de productos" defaultCollapsed storageKey="module:collapsed:list:products">
       <div className="providers-table-wrap">
         <table className="providers-table">
           <thead>
@@ -324,6 +330,7 @@ function ProductsModule({ token, isActive }) {
           </tbody>
         </table>
       </div>
+      </CollapsibleSection>
     </section>
   )
 }

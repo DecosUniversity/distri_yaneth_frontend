@@ -5,6 +5,9 @@ import {
   listServiceTypesRequest,
   updateServiceTypeRequest,
 } from '../../services/serviceType.service'
+import CollapsibleSection from '../../components/dashboard/CollapsibleSection'
+import ReloadButton from '../../components/common/ReloadButton'
+import { notifyError, notifySuccess } from '../../utils/toast'
 
 const EMPTY_SERVICE_TYPE_FORM = {
   nombre_servicio: '',
@@ -71,16 +74,20 @@ function ServiceTypesModule({ token, isActive }) {
       if (editingServiceTypeId) {
         await updateServiceTypeRequest(editingServiceTypeId, payload, token)
         setServiceTypesNotice('Tipo de servicio actualizado correctamente')
+        notifySuccess('Tipo de servicio actualizado correctamente')
       } else {
         await createServiceTypeRequest(payload, token)
         setServiceTypesNotice('Tipo de servicio creado correctamente')
+        notifySuccess('Tipo de servicio creado correctamente')
       }
 
       setServiceTypeForm(EMPTY_SERVICE_TYPE_FORM)
       setEditingServiceTypeId(null)
       await loadServiceTypes()
     } catch (error) {
-      setServiceTypesError(error.message || 'No se pudo guardar tipo de servicio')
+      const message = error.message || 'No se pudo guardar tipo de servicio'
+      setServiceTypesError(message)
+      notifyError(message)
     } finally {
       setIsServiceTypeSubmitting(false)
     }
@@ -121,31 +128,27 @@ function ServiceTypesModule({ token, isActive }) {
     try {
       await deleteServiceTypeRequest(serviceTypeId, token)
       setServiceTypesNotice('Tipo de servicio eliminado correctamente')
+      notifySuccess('Tipo de servicio eliminado correctamente')
       await loadServiceTypes()
 
       if (editingServiceTypeId === serviceTypeId) {
         cancelEdit()
       }
     } catch (error) {
-      setServiceTypesError(error.message || 'No se pudo eliminar tipo de servicio')
+      const message = error.message || 'No se pudo eliminar tipo de servicio'
+      setServiceTypesError(message)
+      notifyError(message)
     }
   }
 
   return (
     <section className="panel-card" aria-label="Modulo de tipos de servicio">
-      <div className="providers-header-row">
+      <ReloadButton onClick={loadServiceTypes} isLoading={isServiceTypesLoading} />
+      <div className="providers-header-row has-reload-button">
         <div>
           <h3>Tipos de Servicio</h3>
-          <p>Catalogo base para clasificar futuros servicios de mantenimiento.</p>
+          <p>Catalogo base para clasificar servicios de mantenimiento.</p>
         </div>
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={loadServiceTypes}
-          disabled={isServiceTypesLoading}
-        >
-          {isServiceTypesLoading ? 'Actualizando...' : 'Recargar'}
-        </button>
       </div>
 
       <form className="provider-form" onSubmit={handleSubmit}>
@@ -212,6 +215,9 @@ function ServiceTypesModule({ token, isActive }) {
       {serviceTypesError ? <p className="feedback error">{serviceTypesError}</p> : null}
       {serviceTypesNotice ? <p className="feedback success">{serviceTypesNotice}</p> : null}
 
+      <div className="maturation-section-divider" aria-hidden="true" />
+
+      <CollapsibleSection title="Listado de tipos de servicio" defaultCollapsed storageKey="module:collapsed:list:serviceTypes">
       <div className="providers-table-wrap">
         <table className="providers-table">
           <thead>
@@ -257,6 +263,7 @@ function ServiceTypesModule({ token, isActive }) {
           </tbody>
         </table>
       </div>
+      </CollapsibleSection>
     </section>
   )
 }

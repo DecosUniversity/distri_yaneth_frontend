@@ -2,10 +2,9 @@ function Sidebar({ activeMenu, modules, onLogout, onSelectMenu }) {
   return (
     <aside className="sidebar" aria-label="Menu principal">
       <div className="sidebar-brand">
-        <div className="sidebar-logo">SISTEMA</div>
-        <div>
-          <h2>Panel principal</h2>
-          <p>Gestion operativa</p>
+        <div className="sidebar-logo">YANETH</div>
+        <div className="sidebar-brand-text">
+          <h2>Menu</h2>
         </div>
       </div>
 

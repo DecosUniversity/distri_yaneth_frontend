@@ -2,25 +2,35 @@ import { useEffect, useState } from 'react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { listReadyForProductionRequest } from '../../services/maturation.service'
-import { buildTraceabilityCode, downloadTraceabilityLabelPdf } from '../../utils/traceabilityLabel'
+import { downloadTraceabilityLabelPdf } from '../../utils/traceabilityLabel'
 import { listProductsRequest } from '../../services/product.service'
 import {
   addProductionColdRoomRequest,
   addProductionInputRequest,
   addProductionMermaRequest,
   addProductionStageRequest,
+  cancelProductionOrderRequest,
+  createMermaTypeRequest,
+  createProductionOrderRequest,
   createProductionProcessRequest,
-  deleteProductionProcessRequest,
+  createStageTypeRequest,
   finalizeProductionProcessRequest,
   getProductionProcessRequest,
   listMermaTypesRequest,
+  listProductionOrdersRequest,
   listProductionProcessesRequest,
+  listStageTypesRequest,
+  revertProductionProcessRequest,
   updateProductionStageRequest,
 } from '../../services/production.service'
+import ReloadButton from '../../components/common/ReloadButton'
+import { notifyError, notifySuccess } from '../../utils/toast'
 
 const FINISHED_PRODUCT_TYPE = 'Producto Terminado'
 const INSUMO_PRODUCT_TYPE = 'Insumo'
-const PRODUCTION_STAGES = ['Pelado', 'Corte', 'Fritura', 'Embalaje']
+const PRODUCTION_ORDER_PENDIENTE_STATE = 'Pendiente'
+const PRODUCTION_ORDER_EN_PROCESO_STATE = 'En Proceso'
+const PRODUCTION_ORDER_ACTIVE_STATES = new Set([PRODUCTION_ORDER_PENDIENTE_STATE, PRODUCTION_ORDER_EN_PROCESO_STATE])
 const PROCESS_ACTIVE_STATE = 'En proceso'
 const PROCESS_PAUSED_STATE = 'Pausado'
 const PROCESS_FINISHED_STATE = 'Finalizado'
@@ -34,6 +44,7 @@ const GESTION_PROCESS_STATES = new Set([PROCESS_ACTIVE_STATE, PROCESS_PAUSED_STA
 const EMPTY_PROCESS_FORM = {
   id_sublote: '',
   id_producto_resultado: '',
+  id_orden: '',
   cantidad_ingresada_kg: '',
   fecha_inicio: '',
   cuarto_congelado: '',
@@ -42,7 +53,7 @@ const EMPTY_PROCESS_FORM = {
 }
 
 const EMPTY_STAGE_FORM = {
-  nombre_etapa: 'Pelado',
+  id_tipo_etapa: '',
   cantidad_personas: '',
   personal_asignado: '',
   fecha_inicio: '',
@@ -51,14 +62,24 @@ const EMPTY_STAGE_FORM = {
 }
 
 const EMPTY_STAGE_EDIT_FORM = {
-  nombre_etapa: 'Pelado',
+  id_tipo_etapa: '',
   cantidad_personas: '',
   personal_asignado: '',
   fecha_inicio: '',
   fecha_fin: '',
   cantidad_entrada_kg: '',
-  cantidad_salida_kg: '',
-  merma_kg: '',
+  observaciones: '',
+}
+
+const EMPTY_STAGE_TYPE_FORM = {
+  nombre_etapa: '',
+  descripcion: '',
+}
+
+const EMPTY_PRODUCTION_ORDER_FORM = {
+  id_producto: '',
+  cantidad_solicitada_kg: '',
+  fecha_solicitada: '',
   observaciones: '',
 }
 
@@ -67,6 +88,11 @@ const EMPTY_MERMA_FORM = {
   id_etapa: '',
   cantidad_kg: '',
   observaciones: '',
+}
+
+const EMPTY_MERMA_TYPE_FORM = {
+  nombre_merma: '',
+  descripcion: '',
 }
 
 const EMPTY_INPUT_FORM = {
@@ -92,7 +118,10 @@ const EMPTY_FINALIZE_FORM = {
   ubicacion_cuarto_congelado: '',
   costo_unitario: '',
   observaciones: '',
+  justificacion_diferencia: '',
 }
+
+const BALANCE_TOLERANCE_KG = 0.01
 
 const formatNumber = (value) => {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
@@ -145,11 +174,15 @@ const toDateTimeInputValue = (value) => {
 
 const emptyToUndefined = (value) => (value === '' || value === null || value === undefined ? undefined : value)
 
-function ProductionModule({ token, isActive }) {
+function ProductionModule({ token, isActive, roleName }) {
+  const isAdmin = roleName === 'Administrador'
+
   const [processes, setProcesses] = useState([])
   const [sublots, setSublots] = useState([])
   const [products, setProducts] = useState([])
   const [mermaTypes, setMermaTypes] = useState([])
+  const [stageTypes, setStageTypes] = useState([])
+  const [productionOrders, setProductionOrders] = useState([])
   const [processForm, setProcessForm] = useState(EMPTY_PROCESS_FORM)
   const [selectedTab, setSelectedTab] = useState(PROCESS_ACTIVE_STATE)
   const [viewMode, setViewMode] = useState('gestion')
@@ -170,9 +203,17 @@ function ProductionModule({ token, isActive }) {
   const [stageEditForm, setStageEditForm] = useState(EMPTY_STAGE_EDIT_FORM)
   const [editingStage, setEditingStage] = useState(null)
   const [mermaForm, setMermaForm] = useState(EMPTY_MERMA_FORM)
+  const [mermaTypeModalOpen, setMermaTypeModalOpen] = useState(false)
+  const [mermaTypeForm, setMermaTypeForm] = useState(EMPTY_MERMA_TYPE_FORM)
+  const [isSubmittingMermaType, setIsSubmittingMermaType] = useState(false)
+  const [stageTypeModalOpen, setStageTypeModalOpen] = useState(false)
+  const [stageTypeForm, setStageTypeForm] = useState(EMPTY_STAGE_TYPE_FORM)
+  const [isSubmittingStageType, setIsSubmittingStageType] = useState(false)
   const [insumoForm, setInsumoForm] = useState(EMPTY_INPUT_FORM)
   const [coldRoomForm, setColdRoomForm] = useState(EMPTY_COLD_ROOM_FORM)
   const [finalizeForm, setFinalizeForm] = useState(EMPTY_FINALIZE_FORM)
+  const [productionOrderForm, setProductionOrderForm] = useState(EMPTY_PRODUCTION_ORDER_FORM)
+  const [isSubmittingProductionOrder, setIsSubmittingProductionOrder] = useState(false)
 
   useEffect(() => {
     if (!isActive) {
@@ -188,17 +229,21 @@ function ProductionModule({ token, isActive }) {
     setIsLoading(true)
 
     try {
-      const [processesData, sublotsData, productsData, mermaTypesData] = await Promise.all([
+      const [processesData, sublotsData, productsData, mermaTypesData, stageTypesData, productionOrdersData] = await Promise.all([
         listProductionProcessesRequest(token),
         listReadyForProductionRequest(token),
         listProductsRequest(token),
         listMermaTypesRequest(token),
+        listStageTypesRequest(token),
+        listProductionOrdersRequest(token),
       ])
 
       setProcesses(Array.isArray(processesData) ? processesData : [])
       setSublots(Array.isArray(sublotsData) ? sublotsData : [])
       setProducts(Array.isArray(productsData) ? productsData : [])
       setMermaTypes(Array.isArray(mermaTypesData) ? mermaTypesData : [])
+      setStageTypes(Array.isArray(stageTypesData) ? stageTypesData : [])
+      setProductionOrders(Array.isArray(productionOrdersData) ? productionOrdersData : [])
     } catch (error) {
       setModuleError(error.message || 'No se pudo cargar informacion de produccion')
     } finally {
@@ -208,7 +253,11 @@ function ProductionModule({ token, isActive }) {
 
   const handleProcessFieldChange = (event) => {
     const { name, value } = event.target
-    setProcessForm((previous) => ({ ...previous, [name]: value }))
+    setProcessForm((previous) => ({
+      ...previous,
+      [name]: value,
+      ...(name === 'id_producto_resultado' ? { id_orden: '' } : {}),
+    }))
   }
 
   const handleSublotSelect = (event) => {
@@ -245,6 +294,12 @@ function ProductionModule({ token, isActive }) {
     (sublot) => String(sublot.id_sublote) === String(processForm.id_sublote)
   )
 
+  const matchingProductionOrders = productionOrders.filter(
+    (order) =>
+      PRODUCTION_ORDER_ACTIVE_STATES.has(order.estado) &&
+      String(order.id_producto) === String(processForm.id_producto_resultado)
+  )
+
   const handleProcessSubmit = async (event) => {
     event.preventDefault()
     setModuleError('')
@@ -255,6 +310,7 @@ function ProductionModule({ token, isActive }) {
       const payload = {
         id_sublote: Number(processForm.id_sublote),
         id_producto_resultado: Number(processForm.id_producto_resultado),
+        id_orden: emptyToUndefined(processForm.id_orden ? Number(processForm.id_orden) : ''),
         cantidad_ingresada_kg: Number(processForm.cantidad_ingresada_kg),
         fecha_inicio: emptyToUndefined(processForm.fecha_inicio),
         cuarto_congelado: emptyToUndefined(processForm.cuarto_congelado.trim()),
@@ -264,31 +320,82 @@ function ProductionModule({ token, isActive }) {
 
       await createProductionProcessRequest(payload, token)
       setModuleNotice('Proceso de produccion iniciado correctamente')
+      notifySuccess('Proceso de produccion iniciado correctamente')
       setProcessForm(EMPTY_PROCESS_FORM)
       await loadInitialData()
     } catch (error) {
-      setModuleError(error.message || 'No se pudo iniciar el proceso de produccion')
+      const message = error.message || 'No se pudo iniciar el proceso de produccion'
+      setModuleError(message)
+      notifyError(message)
     } finally {
       setIsSubmittingProcess(false)
     }
   }
 
-  const handleDeleteProcess = async (processId) => {
-    const confirmDelete = window.confirm('Esta accion eliminara el proceso de produccion seleccionado. Deseas continuar?')
+  const handleRevertProcess = async (process) => {
+    const hasWork =
+      (process.total_etapas || 0) > 0 ||
+      Number(process.total_merma_kg || 0) > 0 ||
+      (process.total_insumos || 0) > 0
 
-    if (!confirmDelete) {
-      return
+    let pesoARevertir = null
+    let justificacionReversion = null
+
+    if (hasWork) {
+      const inputKg = Number(process.cantidad_ingresada_kg) || 0
+      const mermaKg = Number(process.total_merma_kg) || 0
+      const suggested = (inputKg - mermaKg).toFixed(2)
+
+      const pesoInput = window.prompt(
+        `Este proceso ya tiene etapas, mermas o insumos registrados.\nDeclara el peso (kg) que se devolvera al sub-lote (sugerido: ingresado - mermas = ${suggested} kg).`,
+        suggested
+      )
+
+      if (pesoInput === null) {
+        return
+      }
+
+      pesoARevertir = Number(pesoInput)
+
+      if (!Number.isFinite(pesoARevertir) || pesoARevertir < 0) {
+        setModuleError('El peso a revertir no es valido')
+        return
+      }
+
+      justificacionReversion = window.prompt(
+        'Justifica por que se cancela este proceso (obligatorio), por ejemplo: "Se daño el equipo, no se continua con este lote".'
+      )
+
+      if (!justificacionReversion || !justificacionReversion.trim()) {
+        setModuleError('Debes justificar la reversion cuando el proceso ya tiene trabajo registrado')
+        return
+      }
+    } else {
+      const confirmRevert = window.confirm(
+        'El sub-lote volvera a Listo para produccion y este proceso se eliminara. Deseas continuar?'
+      )
+
+      if (!confirmRevert) {
+        return
+      }
     }
 
     setModuleError('')
     setModuleNotice('')
 
     try {
-      await deleteProductionProcessRequest(processId, token)
-      setModuleNotice('Proceso eliminado correctamente')
+      await revertProductionProcessRequest(
+        process.id_proceso,
+        { peso_a_revertir: pesoARevertir, justificacion_reversion: justificacionReversion },
+        token
+      )
+      setModuleNotice('Proceso revertido: el sub-lote vuelve a Listo para produccion')
+      notifySuccess('Proceso revertido: el sub-lote vuelve a Listo para produccion')
       await loadInitialData()
     } catch (error) {
-      setModuleError(error.message || 'No se pudo eliminar el proceso')
+      const message = error.message || 'No se pudo revertir el proceso'
+      setModuleError(message)
+      notifyError(message)
     }
   }
 
@@ -322,12 +429,23 @@ function ProductionModule({ token, isActive }) {
     setActiveAction(null)
   }
 
+  const getNextStageEntrada = () => {
+    const etapas = selectedProcess?.etapas || []
+
+    if (etapas.length === 0) {
+      return selectedProcess?.cantidad_ingresada_kg ?? ''
+    }
+
+    const lastStage = etapas[etapas.length - 1]
+    return lastStage.cantidad_salida_kg ?? ''
+  }
+
   const openAction = (action) => {
     setDetailError('')
     setDetailNotice('')
 
     if (action === 'stage') {
-      setStageForm({ ...EMPTY_STAGE_FORM, fecha_inicio: getNowDateTimeInputValue() })
+      setStageForm({ ...EMPTY_STAGE_FORM, fecha_inicio: getNowDateTimeInputValue(), cantidad_entrada_kg: getNextStageEntrada() })
     } else if (action === 'merma') {
       setMermaForm(EMPTY_MERMA_FORM)
     } else if (action === 'insumo') {
@@ -355,14 +473,12 @@ function ProductionModule({ token, isActive }) {
     setDetailNotice('')
     setEditingStage(stage)
     setStageEditForm({
-      nombre_etapa: stage.nombre_etapa || 'Pelado',
+      id_tipo_etapa: stage.id_tipo_etapa ? String(stage.id_tipo_etapa) : '',
       cantidad_personas: stage.cantidad_personas ?? '',
       personal_asignado: stage.personal_asignado || '',
       fecha_inicio: toDateTimeInputValue(stage.fecha_inicio),
       fecha_fin: finalize ? getNowDateTimeInputValue() : toDateTimeInputValue(stage.fecha_fin),
       cantidad_entrada_kg: stage.cantidad_entrada_kg ?? '',
-      cantidad_salida_kg: stage.cantidad_salida_kg ?? '',
-      merma_kg: stage.merma_kg ?? '',
       observaciones: stage.observaciones || '',
     })
     setActiveAction('stageEdit')
@@ -374,6 +490,25 @@ function ProductionModule({ token, isActive }) {
     setMermaForm({ ...EMPTY_MERMA_FORM, id_etapa: String(stage.id_etapa) })
     setActiveAction('merma')
   }
+
+  const editingStageMermaTotal = editingStage
+    ? (selectedProcess?.mermas || [])
+        .filter((merma) => String(merma.id_etapa) === String(editingStage.id_etapa))
+        .reduce((sum, merma) => sum + (Number(merma.cantidad_kg) || 0), 0)
+    : 0
+
+  const editingStageComputedSalida = Math.max(
+    0,
+    (Number(stageEditForm.cantidad_entrada_kg) || 0) - editingStageMermaTotal
+  )
+
+  const finalizeInputKg = Number(selectedProcess?.cantidad_ingresada_kg || 0)
+  const finalizeTotalMermaKg = Number(selectedProcess?.total_merma_kg || 0)
+  const finalizeExpectedOutputKg = Math.max(0, finalizeInputKg - finalizeTotalMermaKg)
+  const finalizeOutputKg = Number(finalizeForm.cantidad_producida_kg || 0)
+  const finalizeDifferenceKg = Number((finalizeExpectedOutputKg - finalizeOutputKg).toFixed(2))
+  const finalizeNeedsJustification =
+    finalizeForm.cantidad_producida_kg !== '' && Math.abs(finalizeDifferenceKg) > BALANCE_TOLERANCE_KG
 
   const handleStageFieldChange = (event) => {
     const { name, value } = event.target
@@ -388,7 +523,7 @@ function ProductionModule({ token, isActive }) {
 
     try {
       const payload = {
-        nombre_etapa: stageForm.nombre_etapa,
+        id_tipo_etapa: Number(stageForm.id_tipo_etapa),
         cantidad_personas: Number(stageForm.cantidad_personas),
         personal_asignado: emptyToUndefined(stageForm.personal_asignado.trim()),
         fecha_inicio: stageForm.fecha_inicio,
@@ -399,11 +534,14 @@ function ProductionModule({ token, isActive }) {
       await addProductionStageRequest(selectedProcess.id_proceso, payload, token)
       setActiveAction(null)
       setDetailNotice('Etapa iniciada correctamente')
+      notifySuccess('Etapa iniciada correctamente')
       setStageForm(EMPTY_STAGE_FORM)
       await refreshDetail(selectedProcess.id_proceso)
       await loadInitialData()
     } catch (error) {
-      setDetailError(error.message || 'No se pudo iniciar la etapa')
+      const message = error.message || 'No se pudo iniciar la etapa'
+      setDetailError(message)
+      notifyError(message)
     } finally {
       setIsSubmittingDetail(false)
     }
@@ -422,14 +560,12 @@ function ProductionModule({ token, isActive }) {
 
     try {
       const payload = {
-        nombre_etapa: stageEditForm.nombre_etapa,
+        id_tipo_etapa: Number(stageEditForm.id_tipo_etapa),
         cantidad_personas: Number(stageEditForm.cantidad_personas),
         personal_asignado: emptyToUndefined(stageEditForm.personal_asignado.trim()),
         fecha_inicio: stageEditForm.fecha_inicio,
         fecha_fin: emptyToUndefined(stageEditForm.fecha_fin),
         cantidad_entrada_kg: emptyToUndefined(stageEditForm.cantidad_entrada_kg),
-        cantidad_salida_kg: emptyToUndefined(stageEditForm.cantidad_salida_kg),
-        merma_kg: emptyToUndefined(stageEditForm.merma_kg),
         observaciones: emptyToUndefined(stageEditForm.observaciones.trim()),
       }
 
@@ -437,10 +573,13 @@ function ProductionModule({ token, isActive }) {
       setActiveAction(null)
       setEditingStage(null)
       setDetailNotice('Etapa actualizada correctamente')
+      notifySuccess('Etapa actualizada correctamente')
       await refreshDetail(selectedProcess.id_proceso)
       await loadInitialData()
     } catch (error) {
-      setDetailError(error.message || 'No se pudo actualizar la etapa')
+      const message = error.message || 'No se pudo actualizar la etapa'
+      setDetailError(message)
+      notifyError(message)
     } finally {
       setIsSubmittingDetail(false)
     }
@@ -468,13 +607,169 @@ function ProductionModule({ token, isActive }) {
       await addProductionMermaRequest(selectedProcess.id_proceso, payload, token)
       setActiveAction(null)
       setDetailNotice('Merma registrada correctamente')
+      notifySuccess('Merma registrada correctamente')
       setMermaForm(EMPTY_MERMA_FORM)
       await refreshDetail(selectedProcess.id_proceso)
       await loadInitialData()
     } catch (error) {
-      setDetailError(error.message || 'No se pudo registrar la merma')
+      const message = error.message || 'No se pudo registrar la merma'
+      setDetailError(message)
+      notifyError(message)
     } finally {
       setIsSubmittingDetail(false)
+    }
+  }
+
+  const openMermaTypeModal = () => {
+    setMermaTypeForm(EMPTY_MERMA_TYPE_FORM)
+    setDetailError('')
+    setMermaTypeModalOpen(true)
+  }
+
+  const closeMermaTypeModal = () => {
+    if (isSubmittingMermaType) {
+      return
+    }
+
+    setMermaTypeModalOpen(false)
+  }
+
+  const handleMermaTypeFieldChange = (event) => {
+    const { name, value } = event.target
+    setMermaTypeForm((previous) => ({ ...previous, [name]: value }))
+  }
+
+  const handleMermaTypeSubmit = async (event) => {
+    event.preventDefault()
+    setDetailError('')
+    setIsSubmittingMermaType(true)
+
+    try {
+      const newMermaType = await createMermaTypeRequest(
+        {
+          nombre_merma: mermaTypeForm.nombre_merma.trim(),
+          descripcion: emptyToUndefined(mermaTypeForm.descripcion.trim()),
+        },
+        token
+      )
+
+      const updatedTypes = await listMermaTypesRequest(token)
+      setMermaTypes(Array.isArray(updatedTypes) ? updatedTypes : [])
+      setMermaForm((previous) => ({ ...previous, id_tipo_merma: String(newMermaType.id_tipo_merma) }))
+      setMermaTypeModalOpen(false)
+      notifySuccess('Categoria de merma creada correctamente')
+    } catch (error) {
+      const message = error.message || 'No se pudo registrar la categoria de merma'
+      setDetailError(message)
+      notifyError(message)
+    } finally {
+      setIsSubmittingMermaType(false)
+    }
+  }
+
+  const openStageTypeModal = () => {
+    setStageTypeForm(EMPTY_STAGE_TYPE_FORM)
+    setDetailError('')
+    setStageTypeModalOpen(true)
+  }
+
+  const closeStageTypeModal = () => {
+    if (isSubmittingStageType) {
+      return
+    }
+
+    setStageTypeModalOpen(false)
+  }
+
+  const handleStageTypeFieldChange = (event) => {
+    const { name, value } = event.target
+    setStageTypeForm((previous) => ({ ...previous, [name]: value }))
+  }
+
+  const handleStageTypeSubmit = async (event) => {
+    event.preventDefault()
+    setDetailError('')
+    setIsSubmittingStageType(true)
+
+    try {
+      const newStageType = await createStageTypeRequest(
+        {
+          nombre_etapa: stageTypeForm.nombre_etapa.trim(),
+          descripcion: emptyToUndefined(stageTypeForm.descripcion.trim()),
+        },
+        token
+      )
+
+      const updatedTypes = await listStageTypesRequest(token)
+      setStageTypes(Array.isArray(updatedTypes) ? updatedTypes : [])
+
+      // El "+" puede abrirse tanto al agregar una etapa nueva como al editar una existente;
+      // se autoselecciona en el formulario que este activo en ese momento.
+      if (activeAction === 'stageEdit') {
+        setStageEditForm((previous) => ({ ...previous, id_tipo_etapa: String(newStageType.id_tipo_etapa) }))
+      } else {
+        setStageForm((previous) => ({ ...previous, id_tipo_etapa: String(newStageType.id_tipo_etapa) }))
+      }
+
+      setStageTypeModalOpen(false)
+      notifySuccess('Tipo de etapa creado correctamente')
+    } catch (error) {
+      const message = error.message || 'No se pudo registrar el tipo de etapa'
+      setDetailError(message)
+      notifyError(message)
+    } finally {
+      setIsSubmittingStageType(false)
+    }
+  }
+
+  const handleProductionOrderFieldChange = (event) => {
+    const { name, value } = event.target
+    setProductionOrderForm((previous) => ({ ...previous, [name]: value }))
+  }
+
+  const handleProductionOrderSubmit = async (event) => {
+    event.preventDefault()
+    setModuleError('')
+    setModuleNotice('')
+    setIsSubmittingProductionOrder(true)
+
+    try {
+      await createProductionOrderRequest(
+        {
+          id_producto: Number(productionOrderForm.id_producto),
+          cantidad_solicitada_kg: Number(productionOrderForm.cantidad_solicitada_kg),
+          fecha_solicitada: emptyToUndefined(productionOrderForm.fecha_solicitada),
+          observaciones: emptyToUndefined(productionOrderForm.observaciones.trim()),
+        },
+        token
+      )
+
+      setModuleNotice('Orden de produccion creada correctamente')
+      notifySuccess('Orden de produccion creada correctamente')
+      setProductionOrderForm(EMPTY_PRODUCTION_ORDER_FORM)
+      await loadInitialData()
+    } catch (error) {
+      const message = error.message || 'No se pudo crear la orden de produccion'
+      setModuleError(message)
+      notifyError(message)
+    } finally {
+      setIsSubmittingProductionOrder(false)
+    }
+  }
+
+  const handleCancelProductionOrder = async (order) => {
+    setModuleError('')
+    setModuleNotice('')
+
+    try {
+      await cancelProductionOrderRequest(order.id_orden, token)
+      setModuleNotice(`Orden de produccion #${order.id_orden} cancelada`)
+      notifySuccess('Orden de produccion cancelada')
+      await loadInitialData()
+    } catch (error) {
+      const message = error.message || 'No se pudo cancelar la orden de produccion'
+      setModuleError(message)
+      notifyError(message)
     }
   }
 
@@ -501,10 +796,13 @@ function ProductionModule({ token, isActive }) {
       await addProductionInputRequest(selectedProcess.id_proceso, payload, token)
       setActiveAction(null)
       setDetailNotice('Insumo registrado correctamente')
+      notifySuccess('Insumo registrado correctamente')
       setInsumoForm(EMPTY_INPUT_FORM)
       await refreshDetail(selectedProcess.id_proceso)
     } catch (error) {
-      setDetailError(error.message || 'No se pudo registrar el insumo')
+      const message = error.message || 'No se pudo registrar el insumo'
+      setDetailError(message)
+      notifyError(message)
     } finally {
       setIsSubmittingDetail(false)
     }
@@ -532,11 +830,14 @@ function ProductionModule({ token, isActive }) {
       await addProductionColdRoomRequest(selectedProcess.id_proceso, payload, token)
       setActiveAction(null)
       setDetailNotice('Ingreso a cuarto frio registrado correctamente')
+      notifySuccess('Ingreso a cuarto frio registrado correctamente')
       setColdRoomForm(EMPTY_COLD_ROOM_FORM)
       await refreshDetail(selectedProcess.id_proceso)
       await loadInitialData()
     } catch (error) {
-      setDetailError(error.message || 'No se pudo registrar el ingreso a cuarto frio')
+      const message = error.message || 'No se pudo registrar el ingreso a cuarto frio'
+      setDetailError(message)
+      notifyError(message)
     } finally {
       setIsSubmittingDetail(false)
     }
@@ -551,6 +852,12 @@ function ProductionModule({ token, isActive }) {
     event.preventDefault()
     setDetailError('')
     setDetailNotice('')
+
+    if (finalizeNeedsJustification && !finalizeForm.justificacion_diferencia.trim()) {
+      setDetailError('El peso no cuadra: debes justificar la diferencia antes de finalizar.')
+      return
+    }
+
     setIsSubmittingDetail(true)
 
     try {
@@ -562,16 +869,20 @@ function ProductionModule({ token, isActive }) {
         ubicacion_cuarto_congelado: emptyToUndefined(finalizeForm.ubicacion_cuarto_congelado.trim()),
         observaciones: emptyToUndefined(finalizeForm.observaciones.trim()),
         costo_unitario: emptyToUndefined(finalizeForm.costo_unitario),
+        justificacion_diferencia: emptyToUndefined(finalizeForm.justificacion_diferencia.trim()),
       }
 
       await finalizeProductionProcessRequest(selectedProcess.id_proceso, payload, token)
       setModuleNotice(`Proceso #${selectedProcess.id_proceso} finalizado correctamente`)
+      notifySuccess(`Proceso #${selectedProcess.id_proceso} finalizado correctamente`)
       setActiveAction(null)
       setDetailModalOpen(false)
       setSelectedProcess(null)
       await loadInitialData()
     } catch (error) {
-      setDetailError(error.message || 'No se pudo finalizar el proceso')
+      const message = error.message || 'No se pudo finalizar el proceso'
+      setDetailError(message)
+      notifyError(message)
     } finally {
       setIsSubmittingDetail(false)
     }
@@ -727,15 +1038,8 @@ function ProductionModule({ token, isActive }) {
   }
 
   const handleDownloadProcessLabel = (process) => {
-    const code = buildTraceabilityCode({
-      id_proveedor: process.id_proveedor_origen,
-      id_entrada: process.id_entrada_origen,
-      id_lote: process.id_lote_mp,
-      id_producto: process.id_producto_resultado,
-    })
-
     downloadTraceabilityLabelPdf({
-      code,
+      code: process.codigo_lote || `Proceso #${process.id_proceso}`,
       title: 'Etiqueta de trazabilidad - Producto terminado',
       lines: [
         `Producto: ${process.producto_resultado_nombre || `#${process.id_producto_resultado}`}`,
@@ -750,14 +1054,12 @@ function ProductionModule({ token, isActive }) {
 
   return (
     <section className="panel-card" aria-label="Modulo de produccion">
-      <div className="providers-header-row">
+      <ReloadButton onClick={loadInitialData} isLoading={isLoading} />
+      <div className="providers-header-row has-reload-button">
         <div>
           <h3>Produccion</h3>
           <p>Ingresa lotes listos de materia prima al piso productivo y registra su rendimiento.</p>
         </div>
-        <button type="button" className="secondary-button" onClick={loadInitialData} disabled={isLoading}>
-          {isLoading ? 'Actualizando...' : 'Recargar'}
-        </button>
       </div>
 
       <div className="maturation-tab-strip" role="tablist" aria-label="Vista de produccion">
@@ -778,6 +1080,15 @@ function ProductionModule({ token, isActive }) {
           onClick={() => setViewMode('consultar')}
         >
           Consultar
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={viewMode === 'ordenes'}
+          className={`secondary-button maturation-tab-button ${viewMode === 'ordenes' ? 'is-active' : ''}`}
+          onClick={() => setViewMode('ordenes')}
+        >
+          Ordenes de produccion
         </button>
       </div>
 
@@ -815,6 +1126,21 @@ function ProductionModule({ token, isActive }) {
                 </option>
               ))}
             </select>
+          </label>
+
+          <label>
+            Orden de produccion (opcional)
+            <select name="id_orden" value={processForm.id_orden} onChange={handleProcessFieldChange}>
+              <option value="">Sin orden (produccion libre)</option>
+              {matchingProductionOrders.map((order) => (
+                <option key={order.id_orden} value={order.id_orden}>
+                  {`#${order.id_orden} - ${formatNumber(order.cantidad_solicitada_kg)} kg solicitados (${order.estado})`}
+                </option>
+              ))}
+            </select>
+            {processForm.id_producto_resultado && matchingProductionOrders.length === 0 ? (
+              <small>No hay ordenes pendientes para este producto.</small>
+            ) : null}
           </label>
 
           <label>
@@ -884,6 +1210,8 @@ function ProductionModule({ token, isActive }) {
       </form>
       ) : null}
 
+      {viewMode !== 'ordenes' ? (
+      <>
       <div className="maturation-tab-strip">
         {visibleProcessTabs.map((tab) => (
           <button
@@ -954,6 +1282,7 @@ function ProductionModule({ token, isActive }) {
           <thead>
             <tr>
               <th>Proceso</th>
+              <th>Orden</th>
               <th>Sub-lote</th>
               <th>Producto resultado</th>
               <th>Ingresado (kg)</th>
@@ -969,7 +1298,7 @@ function ProductionModule({ token, isActive }) {
           <tbody>
             {filteredProcesses.length === 0 && !isLoading ? (
               <tr>
-                <td colSpan="11" className="empty-table-cell">
+                <td colSpan="12" className="empty-table-cell">
                   No hay procesos en esta pestaña.
                 </td>
               </tr>
@@ -978,6 +1307,7 @@ function ProductionModule({ token, isActive }) {
             {filteredProcesses.map((process) => (
               <tr key={process.id_proceso}>
                 <td>#{process.id_proceso}</td>
+                <td>{process.id_orden ? `#${process.id_orden}` : '-'}</td>
                 <td>
                   #{process.id_sublote} ({process.codigo_sublote})
                 </td>
@@ -1002,8 +1332,8 @@ function ProductionModule({ token, isActive }) {
                     </button>
                   ) : null}
                   {process.estado_proceso !== PROCESS_FINISHED_STATE ? (
-                    <button type="button" className="danger-button" onClick={() => handleDeleteProcess(process.id_proceso)}>
-                      Eliminar
+                    <button type="button" className="danger-button" onClick={() => handleRevertProcess(process)}>
+                      Revertir
                     </button>
                   ) : null}
                 </td>
@@ -1012,6 +1342,117 @@ function ProductionModule({ token, isActive }) {
           </tbody>
         </table>
       </div>
+      </>
+      ) : (
+      <>
+        <form className="provider-form" onSubmit={handleProductionOrderSubmit}>
+          <h4 style={{ marginTop: 0 }}>Nueva orden de produccion</h4>
+          <div className="provider-form-grid">
+            <label>
+              Producto terminado *
+              <select
+                name="id_producto"
+                value={productionOrderForm.id_producto}
+                onChange={handleProductionOrderFieldChange}
+                required
+              >
+                <option value="">Selecciona producto terminado</option>
+                {finishedProducts.map((product) => (
+                  <option key={product.id_producto} value={product.id_producto}>
+                    {product.nombre || `Producto #${product.id_producto}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Cantidad solicitada (kg) *
+              <input
+                name="cantidad_solicitada_kg"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={productionOrderForm.cantidad_solicitada_kg}
+                onChange={handleProductionOrderFieldChange}
+                required
+              />
+            </label>
+
+            <label>
+              Fecha solicitada
+              <input
+                name="fecha_solicitada"
+                type="date"
+                value={productionOrderForm.fecha_solicitada}
+                onChange={handleProductionOrderFieldChange}
+              />
+            </label>
+
+            <label className="full-width-field">
+              Observaciones
+              <input
+                name="observaciones"
+                type="text"
+                value={productionOrderForm.observaciones}
+                onChange={handleProductionOrderFieldChange}
+                placeholder="Opcional"
+              />
+            </label>
+          </div>
+
+          <div className="provider-form-actions">
+            <button type="submit" disabled={isSubmittingProductionOrder}>
+              {isSubmittingProductionOrder ? 'Guardando...' : 'Crear orden'}
+            </button>
+          </div>
+        </form>
+
+        {moduleError ? <p className="feedback error">{moduleError}</p> : null}
+        {moduleNotice ? <p className="feedback success">{moduleNotice}</p> : null}
+
+        <div className="providers-table-wrap table-limited" style={{ marginTop: '8px' }}>
+          <table className="providers-table">
+            <thead>
+              <tr>
+                <th>Orden</th>
+                <th>Producto</th>
+                <th>Solicitado (kg)</th>
+                <th>Producido (kg)</th>
+                <th>Fecha solicitada</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {productionOrders.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="empty-table-cell">
+                    No hay ordenes de produccion registradas.
+                  </td>
+                </tr>
+              ) : null}
+              {productionOrders.map((order) => (
+                <tr key={order.id_orden}>
+                  <td>#{order.id_orden}</td>
+                  <td>{order.producto_nombre || `Producto #${order.id_producto}`}</td>
+                  <td>{formatNumber(order.cantidad_solicitada_kg)}</td>
+                  <td>{formatNumber(order.cantidad_producida_kg)}</td>
+                  <td>{order.fecha_solicitada ? new Date(order.fecha_solicitada).toLocaleDateString('es-GT') : '-'}</td>
+                  <td>{order.estado}</td>
+                  <td className="table-actions">
+                    {order.estado === PRODUCTION_ORDER_PENDIENTE_STATE ? (
+                      <button type="button" className="danger-button" onClick={() => handleCancelProductionOrder(order)}>
+                        Cancelar
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </>
+      )}
 
       {detailModalOpen && selectedProcess ? (
         <div className="modal-backdrop">
@@ -1247,13 +1688,18 @@ function ProductionModule({ token, isActive }) {
               <div className="provider-form-grid">
                 <label>
                   Etapa *
-                  <select name="nombre_etapa" value={stageForm.nombre_etapa} onChange={handleStageFieldChange} required>
-                    {PRODUCTION_STAGES.map((stage) => (
-                      <option key={stage} value={stage}>
-                        {stage}
+                  <select name="id_tipo_etapa" value={stageForm.id_tipo_etapa} onChange={handleStageFieldChange} required>
+                    <option value="">Selecciona tipo de etapa</option>
+                    {stageTypes.map((stageType) => (
+                      <option key={stageType.id_tipo_etapa} value={stageType.id_tipo_etapa}>
+                        {stageType.nombre_etapa}
                       </option>
                     ))}
                   </select>
+                  {stageTypes.length === 0 ? <small>Aun no hay tipos de etapa registrados.</small> : null}
+                  <button type="button" className="secondary-button" style={{ marginTop: 6 }} onClick={openStageTypeModal}>
+                    + Nuevo tipo de etapa
+                  </button>
                 </label>
 
                 <label>
@@ -1288,8 +1734,12 @@ function ProductionModule({ token, isActive }) {
                     type="datetime-local"
                     value={stageForm.fecha_inicio}
                     onChange={handleStageFieldChange}
+                    disabled={!isAdmin}
                     required
                   />
+                  {!isAdmin ? (
+                    <small>Solo un Administrador puede modificar la hora de inicio.</small>
+                  ) : null}
                 </label>
 
                 <label>
@@ -1302,7 +1752,13 @@ function ProductionModule({ token, isActive }) {
                     value={stageForm.cantidad_entrada_kg}
                     onChange={handleStageFieldChange}
                     placeholder="0.00"
+                    disabled={!isAdmin}
                   />
+                  <small>
+                    {isAdmin
+                      ? 'Se toma de la salida de la etapa anterior (o de la entrada del proceso en la primera etapa). Puedes ajustarla.'
+                      : 'Se toma automaticamente de la salida de la etapa anterior. Solo un Administrador puede ajustarla.'}
+                  </small>
                 </label>
 
                 <label>
@@ -1350,13 +1806,23 @@ function ProductionModule({ token, isActive }) {
               <div className="provider-form-grid">
                 <label>
                   Etapa *
-                  <select name="nombre_etapa" value={stageEditForm.nombre_etapa} onChange={handleStageEditFieldChange} required>
-                    {PRODUCTION_STAGES.map((stage) => (
-                      <option key={stage} value={stage}>
-                        {stage}
+                  <select
+                    name="id_tipo_etapa"
+                    value={stageEditForm.id_tipo_etapa}
+                    onChange={handleStageEditFieldChange}
+                    required
+                  >
+                    <option value="">Selecciona tipo de etapa</option>
+                    {stageTypes.map((stageType) => (
+                      <option key={stageType.id_tipo_etapa} value={stageType.id_tipo_etapa}>
+                        {stageType.nombre_etapa}
                       </option>
                     ))}
                   </select>
+                  {stageTypes.length === 0 ? <small>Aun no hay tipos de etapa registrados.</small> : null}
+                  <button type="button" className="secondary-button" style={{ marginTop: 6 }} onClick={openStageTypeModal}>
+                    + Nuevo tipo de etapa
+                  </button>
                 </label>
 
                 <label>
@@ -1391,8 +1857,12 @@ function ProductionModule({ token, isActive }) {
                     type="datetime-local"
                     value={stageEditForm.fecha_inicio}
                     onChange={handleStageEditFieldChange}
+                    disabled={!isAdmin}
                     required
                   />
+                  {!isAdmin ? (
+                    <small>Solo un Administrador puede modificar la hora de inicio.</small>
+                  ) : null}
                 </label>
 
                 <label>
@@ -1402,7 +1872,11 @@ function ProductionModule({ token, isActive }) {
                     type="datetime-local"
                     value={stageEditForm.fecha_fin}
                     onChange={handleStageEditFieldChange}
+                    disabled={!isAdmin}
                   />
+                  {!isAdmin ? (
+                    <small>Solo un Administrador puede modificar la hora de finalizacion.</small>
+                  ) : null}
                 </label>
 
                 <label>
@@ -1415,34 +1889,25 @@ function ProductionModule({ token, isActive }) {
                     value={stageEditForm.cantidad_entrada_kg}
                     onChange={handleStageEditFieldChange}
                     placeholder="0.00"
+                    disabled={!isAdmin}
                   />
+                  {!isAdmin ? <small>Solo un Administrador puede ajustar la entrada.</small> : null}
+                </label>
+
+                <label>
+                  Merma (kg)
+                  <input type="number" value={editingStageMermaTotal} readOnly />
+                  <small>Suma automatica de las mermas registradas para esta etapa.</small>
                 </label>
 
                 <label>
                   Salida (kg)
                   <input
-                    name="cantidad_salida_kg"
                     type="number"
-                    min="0"
-                    step="0.01"
-                    value={stageEditForm.cantidad_salida_kg}
-                    onChange={handleStageEditFieldChange}
-                    placeholder="0.00"
+                    value={stageEditForm.cantidad_entrada_kg === '' ? '' : editingStageComputedSalida}
+                    readOnly
                   />
-                </label>
-
-                <label>
-                  Merma (kg)
-                  <input
-                    name="merma_kg"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={stageEditForm.merma_kg}
-                    onChange={handleStageEditFieldChange}
-                    placeholder="0.00"
-                  />
-                  <small>Si aun no tienes el dato, deja vacio y vuelve a editar mas tarde.</small>
+                  <small>Entrada menos la merma registrada.</small>
                 </label>
 
                 <label>
@@ -1493,6 +1958,12 @@ function ProductionModule({ token, isActive }) {
                       </option>
                     ))}
                   </select>
+                  {mermaTypes.length === 0 ? (
+                    <small>Aun no hay categorias de merma registradas.</small>
+                  ) : null}
+                  <button type="button" className="secondary-button" style={{ marginTop: 6 }} onClick={openMermaTypeModal}>
+                    + Nueva categoria
+                  </button>
                 </label>
 
                 <label>
@@ -1536,6 +2007,106 @@ function ProductionModule({ token, isActive }) {
               <div className="provider-form-actions">
                 <button type="submit" disabled={isSubmittingDetail}>
                   {isSubmittingDetail ? 'Guardando...' : 'Registrar merma'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {mermaTypeModalOpen ? (
+        <div className="modal-backdrop">
+          <div className="modal-card" style={{ width: 'min(480px, 100%)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <h4 style={{ marginBottom: 4 }}>Nueva categoria de merma</h4>
+              <button type="button" className="secondary-button" onClick={closeMermaTypeModal}>
+                Cerrar
+              </button>
+            </div>
+
+            {detailError ? <p className="feedback error">{detailError}</p> : null}
+
+            <form className="provider-form" onSubmit={handleMermaTypeSubmit} style={{ marginTop: '16px' }}>
+              <div className="provider-form-grid">
+                <label>
+                  Nombre *
+                  <input
+                    name="nombre_merma"
+                    type="text"
+                    maxLength={50}
+                    value={mermaTypeForm.nombre_merma}
+                    onChange={handleMermaTypeFieldChange}
+                    placeholder="Ej. Merma por corte"
+                    required
+                  />
+                </label>
+
+                <label>
+                  Descripcion
+                  <input
+                    name="descripcion"
+                    type="text"
+                    maxLength={150}
+                    value={mermaTypeForm.descripcion}
+                    onChange={handleMermaTypeFieldChange}
+                    placeholder="Opcional"
+                  />
+                </label>
+              </div>
+
+              <div className="provider-form-actions">
+                <button type="submit" disabled={isSubmittingMermaType}>
+                  {isSubmittingMermaType ? 'Guardando...' : 'Registrar categoria'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {stageTypeModalOpen ? (
+        <div className="modal-backdrop">
+          <div className="modal-card" style={{ width: 'min(480px, 100%)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <h4 style={{ marginBottom: 4 }}>Nuevo tipo de etapa</h4>
+              <button type="button" className="secondary-button" onClick={closeStageTypeModal}>
+                Cerrar
+              </button>
+            </div>
+
+            {detailError ? <p className="feedback error">{detailError}</p> : null}
+
+            <form className="provider-form" onSubmit={handleStageTypeSubmit} style={{ marginTop: '16px' }}>
+              <div className="provider-form-grid">
+                <label>
+                  Nombre *
+                  <input
+                    name="nombre_etapa"
+                    type="text"
+                    maxLength={60}
+                    value={stageTypeForm.nombre_etapa}
+                    onChange={handleStageTypeFieldChange}
+                    placeholder="Ej. Coccion"
+                    required
+                  />
+                </label>
+
+                <label>
+                  Descripcion
+                  <input
+                    name="descripcion"
+                    type="text"
+                    maxLength={150}
+                    value={stageTypeForm.descripcion}
+                    onChange={handleStageTypeFieldChange}
+                    placeholder="Opcional"
+                  />
+                </label>
+              </div>
+
+              <div className="provider-form-actions">
+                <button type="submit" disabled={isSubmittingStageType}>
+                  {isSubmittingStageType ? 'Guardando...' : 'Registrar tipo de etapa'}
                 </button>
               </div>
             </form>
@@ -1720,6 +2291,20 @@ function ProductionModule({ token, isActive }) {
 
             {detailError ? <p className="feedback error">{detailError}</p> : null}
 
+            <div className="maturation-filter-panel">
+              <p style={{ margin: 0 }}>
+                Ingresado: {formatNumber(finalizeInputKg)} kg &minus; Mermas: {formatNumber(finalizeTotalMermaKg)} kg
+                = Esperado: <strong>{formatNumber(finalizeExpectedOutputKg)} kg</strong>
+              </p>
+              {finalizeForm.cantidad_producida_kg !== '' ? (
+                <p style={{ margin: '6px 0 0' }} className={finalizeNeedsJustification ? 'feedback error' : 'feedback success'}>
+                  {finalizeNeedsJustification
+                    ? `No cuadra: diferencia de ${formatNumber(Math.abs(finalizeDifferenceKg))} kg ${finalizeDifferenceKg > 0 ? 'sin explicar (falta peso)' : 'de mas (sobra peso)'}. Debes justificarla abajo.`
+                    : 'El peso cuadra exactamente.'}
+                </p>
+              ) : null}
+            </div>
+
             <form className="provider-form" onSubmit={handleFinalizeSubmit} style={{ marginTop: '16px' }}>
               <div className="provider-form-grid">
                 <label>
@@ -1804,6 +2389,20 @@ function ProductionModule({ token, isActive }) {
                     placeholder="Opcional"
                   />
                 </label>
+
+                {finalizeNeedsJustification ? (
+                  <label style={{ gridColumn: '1 / -1' }}>
+                    Justificacion de la diferencia *
+                    <input
+                      name="justificacion_diferencia"
+                      type="text"
+                      value={finalizeForm.justificacion_diferencia}
+                      onChange={handleFinalizeFieldChange}
+                      placeholder="Ej. derrame durante el traslado, error de pesaje en cascara, etc."
+                      required
+                    />
+                  </label>
+                ) : null}
               </div>
 
               <div className="provider-form-actions">

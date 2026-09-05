@@ -79,9 +79,6 @@ function LoginPage({ errorMessage, isSubmitting, onLogin }) {
               />
               Recordarme
             </label>
-            <a href="#" onClick={(event) => event.preventDefault()}>
-              Olvide mi contrasena
-            </a>
           </div>
 
           {errorMessage ? <p className="feedback error">{errorMessage}</p> : null}

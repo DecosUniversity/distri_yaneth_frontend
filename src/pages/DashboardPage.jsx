@@ -10,6 +10,10 @@ import ProvidersModule from '../features/providers/ProvidersModule'
 import MaturationControlModule from '../features/maturation/MaturationControlModule'
 import ProductionModule from '../features/production/ProductionModule'
 import GreenNetsModule from '../features/greenNets/GreenNetsModule'
+import OrdersModule from '../features/orders/OrdersModule'
+import RoutesModule from '../features/routes/RoutesModule'
+import ReturnsModule from '../features/returns/ReturnsModule'
+import TraceabilityModule from '../features/traceability/TraceabilityModule'
 import ServiceTypesModule from '../features/serviceTypes/ServiceTypesModule'
 import UsersModule from '../features/users/UsersModule'
 import VehiclesModule from '../features/vehicles/VehiclesModule'
@@ -79,6 +83,10 @@ function DashboardPage({ onLogout, session }) {
   const canUseMaturation = canAccessModule(roleName, 'maturation')
   const canUseProduction = canAccessModule(roleName, 'production')
   const canUseGreenNets = canAccessModule(roleName, 'greenNets')
+  const canUseOrders = canAccessModule(roleName, 'orders')
+  const canUseRoutes = canAccessModule(roleName, 'routes')
+  const canUseReturns = canAccessModule(roleName, 'returns')
+  const canUseTraceability = canAccessModule(roleName, 'traceability')
 
   return (
     <main className={`dashboard-layout ${isSidebarVisible ? 'sidebar-open' : 'sidebar-hidden'}`}>
@@ -120,9 +128,17 @@ function DashboardPage({ onLogout, session }) {
           ) : activeMenu === 'maturation' && canUseMaturation ? (
             <MaturationControlModule isActive={activeMenu === 'maturation'} token={session.token} />
           ) : activeMenu === 'production' && canUseProduction ? (
-            <ProductionModule isActive={activeMenu === 'production'} token={session.token} />
+            <ProductionModule isActive={activeMenu === 'production'} token={session.token} roleName={roleName} />
           ) : activeMenu === 'greenNets' && canUseGreenNets ? (
             <GreenNetsModule isActive={activeMenu === 'greenNets'} token={session.token} />
+          ) : activeMenu === 'orders' && canUseOrders ? (
+            <OrdersModule isActive={activeMenu === 'orders'} token={session.token} />
+          ) : activeMenu === 'routes' && canUseRoutes ? (
+            <RoutesModule isActive={activeMenu === 'routes'} token={session.token} roleName={roleName} />
+          ) : activeMenu === 'returns' && canUseReturns ? (
+            <ReturnsModule isActive={activeMenu === 'returns'} token={session.token} roleName={roleName} />
+          ) : activeMenu === 'traceability' && canUseTraceability ? (
+            <TraceabilityModule token={session.token} />
           ) : activeMenu === 'serviceTypes' && canUseServiceTypes ? (
             <ServiceTypesModule isActive={activeMenu === 'serviceTypes'} token={session.token} />
           ) : activeMenu === 'vehicles' && canUseVehicles ? (
@@ -144,7 +160,12 @@ function DashboardPage({ onLogout, session }) {
               showUpcomingVehicleServices={canUseVehicleServices}
               showUpcomingMaturationLots={canUseMaturation}
               showProductionStatus={canUseProduction}
+              showPendingAssignments={canUseRoutes}
+              showProductionCharts={canUseProduction}
+              showOrderCharts={canUseOrders}
+              showInventoryCharts={canUseInventory}
               token={session.token}
+              roleName={roleName}
             />
           )}
         </div>

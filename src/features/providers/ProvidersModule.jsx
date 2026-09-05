@@ -5,6 +5,9 @@ import {
   listProvidersRequest,
   updateProviderRequest,
 } from '../../services/provider.service'
+import CollapsibleSection from '../../components/dashboard/CollapsibleSection'
+import ReloadButton from '../../components/common/ReloadButton'
+import { notifyError, notifySuccess } from '../../utils/toast'
 
 const EMPTY_PROVIDER_FORM = {
   nombre_empresa: '',
@@ -63,16 +66,20 @@ function ProvidersModule({ token, isActive }) {
       if (editingProviderId) {
         await updateProviderRequest(editingProviderId, providerForm, token)
         setProvidersNotice('Proveedor actualizado correctamente')
+        notifySuccess('Proveedor actualizado correctamente')
       } else {
         await createProviderRequest(providerForm, token)
         setProvidersNotice('Proveedor creado correctamente')
+        notifySuccess('Proveedor creado correctamente')
       }
 
       setProviderForm(EMPTY_PROVIDER_FORM)
       setEditingProviderId(null)
       await loadProviders()
     } catch (error) {
-      setProvidersError(error.message || 'No se pudo guardar proveedor')
+      const message = error.message || 'No se pudo guardar proveedor'
+      setProvidersError(message)
+      notifyError(message)
     } finally {
       setIsProviderSubmitting(false)
     }
@@ -111,31 +118,27 @@ function ProvidersModule({ token, isActive }) {
     try {
       await deleteProviderRequest(providerId, token)
       setProvidersNotice('Proveedor eliminado correctamente')
+      notifySuccess('Proveedor eliminado correctamente')
       await loadProviders()
 
       if (editingProviderId === providerId) {
         cancelProviderEdit()
       }
     } catch (error) {
-      setProvidersError(error.message || 'No se pudo eliminar proveedor')
+      const message = error.message || 'No se pudo eliminar proveedor'
+      setProvidersError(message)
+      notifyError(message)
     }
   }
 
   return (
     <section className="panel-card" aria-label="Modulo de proveedores">
-      <div className="providers-header-row">
+      <ReloadButton onClick={loadProviders} isLoading={isProvidersLoading} />
+      <div className="providers-header-row has-reload-button">
         <div>
           <h3>Modulo Proveedores</h3>
           <p>Gestion de altas, ediciones, consultas y eliminaciones.</p>
         </div>
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={loadProviders}
-          disabled={isProvidersLoading}
-        >
-          {isProvidersLoading ? 'Actualizando...' : 'Recargar'}
-        </button>
       </div>
 
       <form className="provider-form" onSubmit={handleProviderSubmit}>
@@ -213,6 +216,9 @@ function ProvidersModule({ token, isActive }) {
       {providersError ? <p className="feedback error">{providersError}</p> : null}
       {providersNotice ? <p className="feedback success">{providersNotice}</p> : null}
 
+      <div className="maturation-section-divider" aria-hidden="true" />
+
+      <CollapsibleSection title="Listado de proveedores" defaultCollapsed storageKey="module:collapsed:list:providers">
       <div className="providers-table-wrap">
         <table className="providers-table">
           <thead>
@@ -260,6 +266,7 @@ function ProvidersModule({ token, isActive }) {
           </tbody>
         </table>
       </div>
+      </CollapsibleSection>
     </section>
   )
 }

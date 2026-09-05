@@ -4,7 +4,7 @@ import autoTable from 'jspdf-autotable'
 import { listProvidersRequest } from '../../services/provider.service'
 import { listProductsRequest } from '../../services/product.service'
 import { listMaturationLotsRequest } from '../../services/maturation.service'
-import { buildTraceabilityCode, downloadTraceabilityLabelPdf } from '../../utils/traceabilityLabel'
+import { downloadTraceabilityLabelPdf } from '../../utils/traceabilityLabel'
 import {
   createEntradaMercanciaRequest,
   deleteEntradaMercanciaRequest,
@@ -12,6 +12,8 @@ import {
   listEntradasMercanciaRequest,
   listUnitsByEntradaRequest,
 } from '../../services/entradas_mercancia.service'
+import ReloadButton from '../../components/common/ReloadButton'
+import { notifyError, notifySuccess } from '../../utils/toast'
 
 const EMPTY_ENTRY_FORM = {
   id_proveedor: '',
@@ -316,12 +318,15 @@ function EntriesModule({ token, userName, isActive }) {
 
       await createEntradaMercanciaRequest(payload, token)
       setEntriesNotice('Entrada de mercancia registrada correctamente')
+      notifySuccess('Entrada de mercancia registrada correctamente')
       setEntryForm(EMPTY_ENTRY_FORM)
       setUnits([])
       setEntryModalOpen(false)
       await loadInitialData()
     } catch (error) {
-      setEntriesError(error.message || 'No se pudo registrar la entrada')
+      const message = error.message || 'No se pudo registrar la entrada'
+      setEntriesError(message)
+      notifyError(message)
     } finally {
       setIsEntrySubmitting(false)
     }
@@ -341,9 +346,12 @@ function EntriesModule({ token, userName, isActive }) {
         try {
           await deleteEntradaMercanciaRequest(entryId, token)
           setEntriesNotice('Entrada eliminada correctamente')
+          notifySuccess('Entrada eliminada correctamente')
           await loadInitialData()
         } catch (error) {
-          setEntriesError(error.message || 'No se pudo eliminar la entrada')
+          const message = error.message || 'No se pudo eliminar la entrada'
+          setEntriesError(message)
+          notifyError(message)
         }
       },
     })
@@ -585,15 +593,9 @@ function EntriesModule({ token, userName, isActive }) {
 
   const handleDownloadEntryLabel = (entry) => {
     const lote = lotesByEntrada.get(String(entry.id_entrada))
-    const code = buildTraceabilityCode({
-      id_proveedor: entry.id_proveedor,
-      id_entrada: entry.id_entrada,
-      id_lote: lote?.id_lote_mp,
-      id_producto: entry.id_producto,
-    })
 
     downloadTraceabilityLabelPdf({
-      code,
+      code: entry.codigo_lote || `Entrada #${entry.id_entrada}`,
       title: 'Etiqueta de trazabilidad - Entrada',
       lines: [
         `Proveedor: ${entry.nombre_empresa || `#${entry.id_proveedor}`}`,
@@ -653,7 +655,8 @@ function EntriesModule({ token, userName, isActive }) {
 
   return (
     <section className="panel-card" aria-label="Modulo de entradas de mercancia">
-      <div className="providers-header-row">
+      <ReloadButton onClick={loadInitialData} isLoading={isEntriesLoading} />
+      <div className="providers-header-row has-reload-button">
         <div>
           <h3>Entradas de mercancia</h3>
           <p>
@@ -672,14 +675,6 @@ function EntriesModule({ token, userName, isActive }) {
             disabled={isEntriesLoading || isExportingPdf || visibleEntries.length === 0}
           >
             {isExportingPdf ? 'Generando PDF...' : 'Descargar PDF'}
-          </button>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={loadInitialData}
-            disabled={isEntriesLoading}
-          >
-            {isEntriesLoading ? 'Actualizando...' : 'Recargar'}
           </button>
         </div>
       </div>
