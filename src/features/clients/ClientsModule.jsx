@@ -76,6 +76,7 @@ function ClientsModule({ token, isActive }) {
   const [clients, setClients] = useState([])
   const [clientForm, setClientForm] = useState(EMPTY_CLIENT_FORM)
   const [editingClientId, setEditingClientId] = useState(null)
+  const [formOpen, setFormOpen] = useState(false)
   const [isClientsLoading, setIsClientsLoading] = useState(false)
   const [isClientSubmitting, setIsClientSubmitting] = useState(false)
   const [clientsError, setClientsError] = useState('')
@@ -133,6 +134,7 @@ function ClientsModule({ token, isActive }) {
 
       setClientForm(EMPTY_CLIENT_FORM)
       setEditingClientId(null)
+      setFormOpen(false)
       await loadClients()
     } catch (error) {
       const message = error.message || 'No se pudo guardar cliente'
@@ -141,6 +143,13 @@ function ClientsModule({ token, isActive }) {
     } finally {
       setIsClientSubmitting(false)
     }
+  }
+
+  const openCreateForm = () => {
+    setClientForm(EMPTY_CLIENT_FORM)
+    setClientsNotice('')
+    setClientsError('')
+    setFormOpen(true)
   }
 
   const handleClientEdit = (client) => {
@@ -156,12 +165,14 @@ function ClientsModule({ token, isActive }) {
     })
     setClientsNotice('')
     setClientsError('')
+    setFormOpen(true)
   }
 
   const cancelClientEdit = () => {
     setEditingClientId(null)
     setClientForm(EMPTY_CLIENT_FORM)
     setClientsNotice('')
+    setFormOpen(false)
   }
 
   const handleClientDelete = async (clientId) => {
@@ -200,8 +211,14 @@ function ClientsModule({ token, isActive }) {
           <h3>Modulo Clientes</h3>
           <p>Gestion de clientes con ubicacion por departamento, municipio y zona, telefono y NIT de facturacion.</p>
         </div>
+        {!formOpen ? (
+          <button type="button" className="primary-button" onClick={openCreateForm}>
+            + Agregar cliente
+          </button>
+        ) : null}
       </div>
 
+      {formOpen ? (
       <form className="provider-form" onSubmit={handleClientSubmit}>
         <div className="provider-form-grid">
           <label>
@@ -295,18 +312,17 @@ function ClientsModule({ token, isActive }) {
                 : 'Crear cliente'}
           </button>
 
-          {editingClientId ? (
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={cancelClientEdit}
-              disabled={isClientSubmitting}
-            >
-              Cancelar edicion
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={cancelClientEdit}
+            disabled={isClientSubmitting}
+          >
+            {editingClientId ? 'Cancelar edicion' : 'Cancelar'}
+          </button>
         </div>
       </form>
+      ) : null}
 
       {clientsError ? <p className="feedback error">{clientsError}</p> : null}
       {clientsNotice ? <p className="feedback success">{clientsNotice}</p> : null}

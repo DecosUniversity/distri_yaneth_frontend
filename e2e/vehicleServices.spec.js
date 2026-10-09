@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { authFile } from './test-users.js'
+import { goToModule } from './helpers.js'
 
 const successMessage = (page, text) => page.locator('p.feedback.success', { hasText: text })
 
@@ -13,9 +14,10 @@ test.describe('Modulo Servicios de Vehiculo - CRUD', () => {
     const editedNotas = `${notas} editado`
 
     await page.goto('/')
-    await page.getByRole('button', { name: 'Servicios Vehiculo', exact: true }).click()
+    await goToModule(page, 'Servicios Vehiculo')
 
     // Crear (se apoya en que ya existe al menos un vehiculo y un tipo de servicio reales)
+    await page.getByRole('button', { name: '+ Agregar servicio' }).click()
     await page.getByLabel('Vehiculo *').selectOption({ index: 1 })
     await page.getByLabel('Tipo de servicio *').selectOption({ index: 1 })
     await page.getByLabel('Fecha de servicio *').fill('2026-08-01')

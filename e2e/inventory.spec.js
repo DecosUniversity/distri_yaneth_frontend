@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { authFile } from './test-users.js'
+import { goToModule } from './helpers.js'
 
 // El modulo de Inventario es solo lectura (consulta y filtros sobre las existencias reales),
 // no tiene crear/editar/eliminar, asi que la prueba cubre el listado y el filtrado por texto.
@@ -8,7 +9,7 @@ test.describe('Modulo Inventario - listado y filtros', () => {
 
   test('lista el inventario y filtra por texto de busqueda', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'Inventario', exact: true }).click()
+    await goToModule(page, 'Inventario')
 
     const listSection = page.getByRole('region', { name: 'Listado de inventario' })
     await listSection.getByRole('button', { name: /Mostrar|Ocultar/ }).click()

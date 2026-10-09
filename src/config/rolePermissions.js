@@ -62,7 +62,9 @@ export const MODULE_DEFINITIONS = {
   greenNets: {
     key: 'greenNets',
     label: 'Redes',
-    summary: 'Empaque de sub-lotes verdes como producto terminado en red.',
+    // El empaque de redes se estandarizo dentro de Produccion ("+ Empacar red"); este modulo
+    // solo consulta el historico de cajas registradas antes de ese cambio.
+    summary: 'Historico de cajas de red empacadas antes de unificar este flujo con Produccion.',
   },
   orders: {
     key: 'orders',
@@ -108,4 +110,70 @@ export const getAllowedModules = (role) => {
 
 export const canAccessModule = (role, moduleKey) => {
   return getAllowedModuleKeys(role).includes(moduleKey)
+}
+
+// Agrupacion visual del menu lateral en modulos generales, para no mostrar 16+ items sueltos.
+// Dashboard y Trazabilidad quedan fuera de cualquier grupo porque son transversales (no
+// pertenecen a un solo flujo de trabajo).
+export const MODULE_GROUPS = [
+  {
+    key: 'produccion',
+    // "Proceso Productivo" y no "Produccion": el grupo contiene el modulo "Produccion" y un
+    // nombre identico rompe los selectores por accesibilidad (accessible name duplicado).
+    label: 'Proceso Productivo',
+    moduleKeys: ['entries', 'maturation', 'production', 'greenNets'],
+  },
+  {
+    key: 'inventarioCatalogos',
+    label: 'Inventario y Catalogos',
+    moduleKeys: ['products', 'inventory', 'clients', 'providers'],
+  },
+  {
+    key: 'distribucion',
+    label: 'Distribucion',
+    moduleKeys: ['orders', 'routes', 'returns'],
+  },
+  {
+    key: 'flota',
+    label: 'Flota',
+    moduleKeys: ['vehicles', 'vehicleServices', 'serviceTypes'],
+  },
+  {
+    key: 'administracion',
+    label: 'Administracion',
+    moduleKeys: ['users'],
+  },
+]
+
+const NAVIGATION_ORDER = [
+  { type: 'standalone', moduleKey: 'dashboard' },
+  ...MODULE_GROUPS.map((group) => ({ type: 'group', ...group })),
+  { type: 'standalone', moduleKey: 'traceability' },
+]
+
+// Arma el arbol de navegacion (items sueltos + grupos) ya filtrado por lo que el rol puede ver.
+// Un grupo que se quede sin ningun modulo permitido para el rol no aparece en absoluto.
+export const getNavigationTree = (role) => {
+  const allowedKeys = getAllowedModuleKeys(role)
+
+  return NAVIGATION_ORDER.map((entry) => {
+    if (entry.type === 'standalone') {
+      if (!allowedKeys.includes(entry.moduleKey)) {
+        return null
+      }
+
+      return { type: 'standalone', module: MODULE_DEFINITIONS[entry.moduleKey] }
+    }
+
+    const modules = entry.moduleKeys
+      .filter((key) => allowedKeys.includes(key))
+      .map((key) => MODULE_DEFINITIONS[key])
+      .filter(Boolean)
+
+    if (modules.length === 0) {
+      return null
+    }
+
+    return { type: 'group', key: entry.key, label: entry.label, modules }
+  }).filter(Boolean)
 }

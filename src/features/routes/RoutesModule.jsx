@@ -65,6 +65,23 @@ const formatNumber = (value) => {
 }
 
 const formatDateTime = (value) => (value ? new Date(value).toLocaleString('es-GT') : '-')
+const formatDateOnly = (value) => (value ? new Date(value).toLocaleDateString('es-GT') : '-')
+
+const formatCurrency = (value) => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return '-'
+  }
+
+  return new Intl.NumberFormat('es-GT', { style: 'currency', currency: 'GTQ' }).format(Number(value))
+}
+
+// "Lineas" es cuantos productos distintos tiene el pedido, no la suma de unidades (cada
+// producto puede tener su propia unidad de medida). Se muestra como texto explicito para
+// no confundirlo con una cantidad de unidades.
+const formatProductosSummary = (lineas) => {
+  const count = (lineas || []).length
+  return `${count} producto${count === 1 ? '' : 's'}`
+}
 
 const formatUbicacion = (order) => {
   const parts = []
@@ -674,13 +691,14 @@ function RoutesModule({ token, isActive, roleName }) {
                         <th>Pedido</th>
                         <th>Cliente</th>
                         <th>Ubicacion</th>
-                        <th>Lineas</th>
+                        <th>Productos</th>
+                        <th>Fecha programada</th>
                       </tr>
                     </thead>
                     <tbody>
                       {sortedPendingOrders.length === 0 ? (
                         <tr>
-                          <td colSpan="5" className="empty-table-cell">No hay pedidos pendientes.</td>
+                          <td colSpan="6" className="empty-table-cell">No hay pedidos pendientes.</td>
                         </tr>
                       ) : null}
                       {sortedPendingOrders.map((order) => (
@@ -695,7 +713,8 @@ function RoutesModule({ token, isActive, roleName }) {
                           <td>#{order.id_pedido}</td>
                           <td>{order.nombre_comercial || `Cliente #${order.id_cliente}`}</td>
                           <td>{formatUbicacion(order)}</td>
-                          <td>{(order.lineas || []).length}</td>
+                          <td>{formatProductosSummary(order.lineas)}</td>
+                          <td>{formatDateOnly(order.fecha_entrega_programada)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -756,13 +775,14 @@ function RoutesModule({ token, isActive, roleName }) {
                     <th>Pedido</th>
                     <th>Cliente</th>
                     <th>Estado</th>
+                    <th>Valor</th>
                     <th>Detalle</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(detailRoute.manifiesto || []).length === 0 ? (
                     <tr>
-                      <td colSpan="4" className="empty-table-cell">Sin pedidos en el manifiesto.</td>
+                      <td colSpan="5" className="empty-table-cell">Sin pedidos en el manifiesto.</td>
                     </tr>
                   ) : null}
                   {(detailRoute.manifiesto || []).map((item) => {
@@ -775,6 +795,7 @@ function RoutesModule({ token, isActive, roleName }) {
                           <td>#{item.id_pedido}</td>
                           <td>{item.nombre_comercial || `Cliente #${item.id_cliente}`}</td>
                           <td>{computeManifestStatus(item)}</td>
+                          <td>{formatCurrency(item.valor_total)}</td>
                           <td>
                             <button
                               type="button"
@@ -787,7 +808,7 @@ function RoutesModule({ token, isActive, roleName }) {
                         </tr>
                         {isExpanded ? (
                           <tr>
-                            <td colSpan="4">
+                            <td colSpan="5">
                               {!orderDetail ? (
                                 <p style={{ margin: 0 }}>Cargando detalle...</p>
                               ) : (
@@ -811,6 +832,7 @@ function RoutesModule({ token, isActive, roleName }) {
                                           <th>Cantidad pedida</th>
                                           <th>Cantidad entregada</th>
                                           <th>Entrega</th>
+                                          <th>Valor</th>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -820,6 +842,11 @@ function RoutesModule({ token, isActive, roleName }) {
                                             <td>{formatNumber(linea.cantidad)}</td>
                                             <td>{linea.cantidad_entregada === null || linea.cantidad_entregada === undefined ? '-' : formatNumber(linea.cantidad_entregada)}</td>
                                             <td>{linea.estado_entrega}</td>
+                                            <td>
+                                              {linea.precio_unitario === null || linea.precio_unitario === undefined
+                                                ? '-'
+                                                : formatCurrency(Number(linea.cantidad || 0) * Number(linea.precio_unitario))}
+                                            </td>
                                           </tr>
                                         ))}
                                       </tbody>

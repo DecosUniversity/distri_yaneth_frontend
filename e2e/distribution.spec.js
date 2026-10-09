@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { authFile } from './test-users.js'
-import { createMateriaPrimaEntry, acceptPendingLot, findSublotIdInTab, successMessage, toastMessage } from './helpers.js'
+import { createMateriaPrimaEntry, acceptPendingLot, findSublotIdInTab, goToModule, successMessage, toastMessage } from './helpers.js'
 
 // La busqueda por numero en Trazabilidad es ambigua (entrada/lote/sub-lote pueden compartir el
 // mismo id por coincidencia de autoincremento): si aparece una lista de resultados en vez del
@@ -39,7 +39,8 @@ test.describe('Flujo de Distribucion: pedido -> entrega -> devolucion -> trazabi
     await page.goto('/')
 
     // --- Cliente nuevo, para que sus pedidos sean identificables sin ambiguedad ---
-    await page.getByRole('button', { name: 'Clientes', exact: true }).click()
+    await goToModule(page, 'Clientes')
+    await page.getByRole('button', { name: '+ Agregar cliente' }).click()
     await page.getByLabel('Nombre comercial *').fill(clientName)
     await page.getByRole('button', { name: 'Crear cliente' }).click()
     await expect(successMessage(page, 'Cliente creado correctamente')).toBeVisible()
@@ -50,7 +51,8 @@ test.describe('Flujo de Distribucion: pedido -> entrega -> devolucion -> trazabi
     const loteId = await acceptPendingLot(page, entryId, 'Maduro')
     const subloteId = await findSublotIdInTab(page, loteId, /Listos para produccion/)
 
-    await page.getByRole('button', { name: 'Produccion', exact: true }).click()
+    await goToModule(page, 'Produccion')
+    await page.getByRole('button', { name: '+ Iniciar proceso' }).click()
     await page.getByLabel('Sub-lote listo para produccion *').selectOption({ value: subloteId })
     await page.getByLabel('Producto resultado *').selectOption({ label: productoNombre })
     await page.getByRole('button', { name: 'Iniciar proceso' }).click()
@@ -75,7 +77,7 @@ test.describe('Flujo de Distribucion: pedido -> entrega -> devolucion -> trazabi
     const existenciaId = existenciaText.match(/Existencia #(\d+)/)[1]
 
     // --- Pedido: linea contra ese lote (existencia) exacto, para trazabilidad determinista ---
-    await page.getByRole('button', { name: 'Pedidos', exact: true }).click()
+    await goToModule(page, 'Pedidos')
     await page.getByRole('button', { name: 'Agregar pedido' }).click()
     const orderModal = page.locator('.modal-backdrop').last()
     await orderModal.getByLabel('Cliente *').selectOption({ label: clientName })
@@ -83,7 +85,7 @@ test.describe('Flujo de Distribucion: pedido -> entrega -> devolucion -> trazabi
     await orderModal.getByLabel('Lote').selectOption(existenciaId)
 
     await orderModal.getByLabel('Cantidad').fill('5')
-    await orderModal.getByRole('button', { name: 'Añadir linea' }).click()
+    await orderModal.getByRole('button', { name: 'Añadir producto' }).click()
     await orderModal.getByRole('button', { name: 'Registrar pedido' }).click()
     await expect(successMessage(page, 'Pedido registrado correctamente')).toBeVisible()
 
@@ -92,7 +94,7 @@ test.describe('Flujo de Distribucion: pedido -> entrega -> devolucion -> trazabi
     const orderIdText = (await orderRow.locator('td').first().textContent()).trim()
 
     // --- Entrega: crear ruta con ese pedido, vehiculo y piloto disponibles ---
-    await page.getByRole('button', { name: 'Entregas', exact: true }).click()
+    await goToModule(page, 'Entregas')
     await page.getByRole('button', { name: 'Agregar entrega' }).click()
     const routeModal = page.locator('.modal-backdrop').last()
 
@@ -142,7 +144,7 @@ test.describe('Flujo de Distribucion: pedido -> entrega -> devolucion -> trazabi
     await expect(successMessage(page, 'cerrada correctamente')).toBeVisible()
 
     // --- Devolucion: recibir la linea no entregada (2 de 5) y reingresarla a inventario ---
-    await page.getByRole('button', { name: 'Devoluciones', exact: true }).click()
+    await goToModule(page, 'Devoluciones')
     const pendingReceptionRow = page.locator('table.providers-table').first().locator('tbody tr').filter({ hasText: clientName })
     await expect(pendingReceptionRow).toHaveCount(1)
     await expect(pendingReceptionRow).toContainText('2.00')

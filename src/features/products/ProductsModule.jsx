@@ -5,12 +5,18 @@ import {
   listProductsRequest,
   updateProductRequest,
 } from '../../services/product.service'
+import {
+  createStageTypeRequest,
+  getProductStageRequirementsRequest,
+  listStageTypesRequest,
+} from '../../services/production.service'
 import CollapsibleSection from '../../components/dashboard/CollapsibleSection'
 import ReloadButton from '../../components/common/ReloadButton'
 import { notifyError, notifySuccess } from '../../utils/toast'
 
 const PRODUCT_TYPES = ['Materia Prima', 'Producto Terminado', 'Insumo', 'Venta Directa']
 const UNIT_OPTIONS = ['Lb', 'Kg', 'Unidades', 'Litros', 'Galones']
+const FINISHED_PRODUCT_TYPE = 'Producto Terminado'
 
 const EMPTY_PRODUCT_FORM = {
   nombre: '',
@@ -40,14 +46,34 @@ const normalizeProductPayload = (productForm) => {
   return payload
 }
 
+const EMPTY_STAGE_TYPE_QUICK_ADD = {
+  nombre_etapa: '',
+}
+
 function ProductsModule({ token, isActive }) {
   const [products, setProducts] = useState([])
   const [productForm, setProductForm] = useState(EMPTY_PRODUCT_FORM)
   const [editingProductId, setEditingProductId] = useState(null)
+  const [formOpen, setFormOpen] = useState(false)
   const [isProductsLoading, setIsProductsLoading] = useState(false)
   const [isProductSubmitting, setIsProductSubmitting] = useState(false)
   const [productsError, setProductsError] = useState('')
   const [productsNotice, setProductsNotice] = useState('')
+
+  // Un Producto Terminado no puede crearse sin un plan de proceso (etapas que debe cumplir).
+  // El plan se arma en el mismo formulario de creacion, no en un paso aparte.
+  const [stageTypes, setStageTypes] = useState([])
+  const [planDraft, setPlanDraft] = useState([])
+  const [planNewStageId, setPlanNewStageId] = useState('')
+  const [stageTypeQuickAddOpen, setStageTypeQuickAddOpen] = useState(false)
+  const [stageTypeQuickAddForm, setStageTypeQuickAddForm] = useState(EMPTY_STAGE_TYPE_QUICK_ADD)
+  const [isCreatingStageType, setIsCreatingStageType] = useState(false)
+
+  // Plan de proceso vigente del producto que se esta editando (solo lectura: el plan en si se
+  // edita desde Produccion -> "Etapas por producto", aqui solo se muestra para que el usuario
+  // pueda verlo sin tener que cambiar de modulo).
+  const [editingProductPlan, setEditingProductPlan] = useState([])
+  const [isLoadingEditingProductPlan, setIsLoadingEditingProductPlan] = useState(false)
 
   useEffect(() => {
     if (!isActive) {
@@ -55,8 +81,20 @@ function ProductsModule({ token, isActive }) {
     }
 
     loadProducts()
+    loadStageTypes()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, token])
+
+  const loadStageTypes = async () => {
+    try {
+      const data = await listStageTypesRequest(token)
+      setStageTypes(Array.isArray(data) ? data : [])
+    } catch (error) {
+      // El catalogo de etapas es secundario a la lista de productos: si falla, el plan de
+      // proceso simplemente aparecera sin opciones para elegir, sin bloquear el modulo.
+      setStageTypes([])
+    }
+  }
 
   const loadProducts = async () => {
     setProductsError('')
@@ -78,16 +116,108 @@ function ProductsModule({ token, isActive }) {
       ...previous,
       [name]: value,
     }))
+
+    // Si se cambia el tipo lejos de Producto Terminado, el plan armado hasta ahora ya no aplica.
+    if (name === 'tipo_producto' && value !== FINISHED_PRODUCT_TYPE) {
+      setPlanDraft([])
+      setPlanNewStageId('')
+    }
+  }
+
+  const planDraftIds = new Set(planDraft.map((item) => item.id_tipo_etapa))
+  const availableStageTypesForPlan = stageTypes.filter((stageType) => !planDraftIds.has(stageType.id_tipo_etapa))
+  const isCreatingFinishedProduct = !editingProductId && productForm.tipo_producto === FINISHED_PRODUCT_TYPE
+
+  const handleAddPlanStage = () => {
+    if (!planNewStageId) {
+      return
+    }
+
+    const stageType = stageTypes.find((item) => String(item.id_tipo_etapa) === planNewStageId)
+
+    if (!stageType) {
+      return
+    }
+
+    setPlanDraft((previous) => [
+      ...previous,
+      { id_tipo_etapa: stageType.id_tipo_etapa, nombre_etapa: stageType.nombre_etapa },
+    ])
+    setPlanNewStageId('')
+  }
+
+  const handleRemovePlanStage = (index) => {
+    setPlanDraft((previous) => previous.filter((_, i) => i !== index))
+  }
+
+  const handleMovePlanStage = (index, direction) => {
+    setPlanDraft((previous) => {
+      const targetIndex = index + direction
+
+      if (targetIndex < 0 || targetIndex >= previous.length) {
+        return previous
+      }
+
+      const next = [...previous]
+      const [moved] = next.splice(index, 1)
+      next.splice(targetIndex, 0, moved)
+      return next
+    })
+  }
+
+  const openStageTypeQuickAdd = () => {
+    setStageTypeQuickAddForm(EMPTY_STAGE_TYPE_QUICK_ADD)
+    setStageTypeQuickAddOpen(true)
+  }
+
+  const handleStageTypeQuickAddFieldChange = (event) => {
+    const { name, value } = event.target
+    setStageTypeQuickAddForm((previous) => ({ ...previous, [name]: value }))
+  }
+
+  const handleCreateStageTypeQuickAdd = async (event) => {
+    event.preventDefault()
+    setProductsError('')
+    setIsCreatingStageType(true)
+
+    try {
+      const newStageType = await createStageTypeRequest(
+        { nombre_etapa: stageTypeQuickAddForm.nombre_etapa.trim() },
+        token
+      )
+
+      const updatedTypes = await listStageTypesRequest(token)
+      setStageTypes(Array.isArray(updatedTypes) ? updatedTypes : [])
+      setPlanNewStageId(String(newStageType.id_tipo_etapa))
+      setStageTypeQuickAddOpen(false)
+      notifySuccess('Tipo de etapa creado correctamente')
+    } catch (error) {
+      const message = error.message || 'No se pudo registrar el tipo de etapa'
+      setProductsError(message)
+      notifyError(message)
+    } finally {
+      setIsCreatingStageType(false)
+    }
   }
 
   const handleProductSubmit = async (event) => {
     event.preventDefault()
     setProductsError('')
     setProductsNotice('')
+
+    if (isCreatingFinishedProduct && planDraft.length === 0) {
+      setProductsError('Debes definir al menos una etapa en el plan de proceso antes de crear el producto.')
+      return
+    }
+
     setIsProductSubmitting(true)
 
     try {
       const payload = normalizeProductPayload(productForm)
+
+      if (isCreatingFinishedProduct) {
+        payload.etapas = planDraft.map((item) => item.id_tipo_etapa)
+      }
 
       if (editingProductId) {
         await updateProductRequest(editingProductId, payload, token)
@@ -101,6 +231,9 @@ function ProductsModule({ token, isActive }) {
 
       setProductForm(EMPTY_PRODUCT_FORM)
       setEditingProductId(null)
+      setPlanDraft([])
+      setPlanNewStageId('')
+      setFormOpen(false)
       await loadProducts()
     } catch (error) {
       const message = error.message || 'No se pudo guardar producto'
@@ -111,7 +244,16 @@ function ProductsModule({ token, isActive }) {
     }
   }
 
-  const handleProductEdit = (product) => {
+  const openCreateForm = () => {
+    setProductForm(EMPTY_PRODUCT_FORM)
+    setPlanDraft([])
+    setPlanNewStageId('')
+    setProductsNotice('')
+    setProductsError('')
+    setFormOpen(true)
+  }
+
+  const handleProductEdit = async (product) => {
     setEditingProductId(product.id_producto)
     setProductForm({
       nombre: product.nombre || '',
@@ -123,12 +265,32 @@ function ProductsModule({ token, isActive }) {
     })
     setProductsNotice('')
     setProductsError('')
+    setFormOpen(true)
+    setEditingProductPlan([])
+
+    if (product.tipo_producto === FINISHED_PRODUCT_TYPE) {
+      setIsLoadingEditingProductPlan(true)
+      try {
+        const requirements = await getProductStageRequirementsRequest(product.id_producto, token)
+        setEditingProductPlan(Array.isArray(requirements) ? requirements : [])
+      } catch (error) {
+        // El plan es informativo en esta pantalla: si falla la carga, solo se omite y el
+        // enlace a Produccion sigue disponible para verlo/editarlo alla.
+        setEditingProductPlan([])
+      } finally {
+        setIsLoadingEditingProductPlan(false)
+      }
+    }
   }
 
   const cancelProductEdit = () => {
     setEditingProductId(null)
     setProductForm(EMPTY_PRODUCT_FORM)
+    setPlanDraft([])
+    setPlanNewStageId('')
+    setEditingProductPlan([])
     setProductsNotice('')
+    setFormOpen(false)
   }
 
   const handleProductDelete = async (productId) => {
@@ -167,8 +329,14 @@ function ProductsModule({ token, isActive }) {
           <h3>Modulo Productos</h3>
           <p>Gestion de productos con tipo, stock minimo y precio sugerido.</p>
         </div>
+        {!formOpen ? (
+          <button type="button" className="primary-button" onClick={openCreateForm}>
+            + Agregar producto
+          </button>
+        ) : null}
       </div>
 
+      {formOpen ? (
       <form className="provider-form" onSubmit={handleProductSubmit}>
         <div className="provider-form-grid">
           <label>
@@ -253,6 +421,164 @@ function ProductsModule({ token, isActive }) {
           </label>
         </div>
 
+        {isCreatingFinishedProduct ? (
+          <>
+            <div className="maturation-section-divider" aria-hidden="true" />
+
+            <h4 style={{ marginTop: 0 }}>Plan de proceso *</h4>
+            <p className="widget-muted" style={{ marginTop: 0 }}>
+              Un producto terminado debe cumplir estas etapas, en este orden, antes de poder finalizarse en Produccion.
+            </p>
+
+            {planDraft.length === 0 ? (
+              <p className="widget-muted">Aun no agregas ninguna etapa a este plan.</p>
+            ) : (
+              <div className="providers-table-wrap table-limited">
+                <table className="providers-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Etapa</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {planDraft.map((item, index) => (
+                      <tr key={`${item.id_tipo_etapa}-${index}`}>
+                        <td>{index + 1}</td>
+                        <td>{item.nombre_etapa}</td>
+                        <td className="table-actions">
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => handleMovePlanStage(index, -1)}
+                            disabled={index === 0}
+                          >
+                            Subir
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => handleMovePlanStage(index, 1)}
+                            disabled={index === planDraft.length - 1}
+                          >
+                            Bajar
+                          </button>
+                          <button
+                            type="button"
+                            className="danger-button"
+                            onClick={() => handleRemovePlanStage(index)}
+                          >
+                            Quitar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="provider-form-actions" style={{ marginTop: 12 }}>
+              <select
+                className="provider-form-input"
+                aria-label="Etapa a agregar al plan"
+                value={planNewStageId}
+                onChange={(event) => setPlanNewStageId(event.target.value)}
+              >
+                <option value="">Selecciona una etapa para agregar</option>
+                {availableStageTypesForPlan.map((stageType) => (
+                  <option key={stageType.id_tipo_etapa} value={stageType.id_tipo_etapa}>
+                    {stageType.nombre_etapa}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={handleAddPlanStage}
+                disabled={!planNewStageId}
+              >
+                + Agregar al plan
+              </button>
+              {!stageTypeQuickAddOpen ? (
+                <button type="button" className="secondary-button" onClick={openStageTypeQuickAdd}>
+                  + Nuevo tipo de etapa
+                </button>
+              ) : null}
+            </div>
+
+            {stageTypeQuickAddOpen ? (
+              <div className="provider-form-grid" style={{ marginTop: 12 }}>
+                <label>
+                  Nombre de la nueva etapa *
+                  <input
+                    name="nombre_etapa"
+                    type="text"
+                    value={stageTypeQuickAddForm.nombre_etapa}
+                    onChange={handleStageTypeQuickAddFieldChange}
+                    placeholder="Ej. Limpieza y empaque por cajas"
+                  />
+                </label>
+                <div className="provider-form-actions" style={{ alignItems: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={handleCreateStageTypeQuickAdd}
+                    disabled={isCreatingStageType || !stageTypeQuickAddForm.nombre_etapa.trim()}
+                  >
+                    {isCreatingStageType ? 'Creando...' : 'Crear tipo de etapa'}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setStageTypeQuickAddOpen(false)}
+                    disabled={isCreatingStageType}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+
+        {editingProductId && productForm.tipo_producto === FINISHED_PRODUCT_TYPE ? (
+          <>
+            <div className="maturation-section-divider" aria-hidden="true" />
+
+            <h4 style={{ marginTop: 0 }}>Plan de proceso vigente</h4>
+
+            {isLoadingEditingProductPlan ? (
+              <p className="widget-muted">Cargando plan de proceso...</p>
+            ) : editingProductPlan.length === 0 ? (
+              <p className="widget-muted">Este producto no tiene un plan de proceso registrado.</p>
+            ) : (
+              <div className="providers-table-wrap table-limited">
+                <table className="providers-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Etapa</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {editingProductPlan.map((item, index) => (
+                      <tr key={item.id_requisito ?? `${item.id_tipo_etapa}-${index}`}>
+                        <td>{index + 1}</td>
+                        <td>{item.nombre_etapa}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <p className="widget-muted">
+              Para modificar el plan de proceso de este producto, ve a Produccion → pestana "Etapas por producto".
+            </p>
+          </>
+        ) : null}
+
         <div className="provider-form-actions">
           <button type="submit" disabled={isProductSubmitting}>
             {isProductSubmitting
@@ -262,18 +588,17 @@ function ProductsModule({ token, isActive }) {
                 : 'Crear producto'}
           </button>
 
-          {editingProductId ? (
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={cancelProductEdit}
-              disabled={isProductSubmitting}
-            >
-              Cancelar edicion
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={cancelProductEdit}
+            disabled={isProductSubmitting}
+          >
+            {editingProductId ? 'Cancelar edicion' : 'Cancelar'}
+          </button>
         </div>
       </form>
+      ) : null}
 
       {productsError ? <p className="feedback error">{productsError}</p> : null}
       {productsNotice ? <p className="feedback success">{productsNotice}</p> : null}

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { authFile } from './test-users.js'
+import { goToModule } from './helpers.js'
 
 // El aviso de exito aparece dos veces (el <p class="feedback success"> inline y el toast de
 // SweetAlert2): se apunta al mensaje inline, que es el que persiste en el DOM.
@@ -15,9 +16,10 @@ test.describe('Modulo Productos - CRUD', () => {
     const editedName = `${productName} editado`
 
     await page.goto('/')
-    await page.getByRole('button', { name: 'Productos', exact: true }).click()
+    await goToModule(page, 'Productos')
 
     // Crear
+    await page.getByRole('button', { name: '+ Agregar producto' }).click()
     await page.getByLabel('Nombre *').fill(productName)
     await page.getByRole('button', { name: 'Crear producto' }).click()
     await expect(successMessage(page, 'Producto creado correctamente')).toBeVisible()

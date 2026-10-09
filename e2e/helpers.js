@@ -1,4 +1,29 @@
 import { expect } from '@playwright/test'
+import { MODULE_GROUPS, MODULE_DEFINITIONS } from '../src/config/rolePermissions.js'
+
+const GROUP_LABEL_BY_MODULE_LABEL = new Map()
+for (const group of MODULE_GROUPS) {
+  for (const moduleKey of group.moduleKeys) {
+    GROUP_LABEL_BY_MODULE_LABEL.set(MODULE_DEFINITIONS[moduleKey].label, group.label)
+  }
+}
+
+// Navega a un modulo del sidebar por su label, expandiendo primero el grupo que lo contiene
+// (Produccion, Inventario y Catalogos, Distribucion, Flota, Administracion) si hace falta.
+// Dashboard y Trazabilidad quedan sueltos, sin grupo, y se hace clic directo.
+export async function goToModule(page, label) {
+  const groupLabel = GROUP_LABEL_BY_MODULE_LABEL.get(label)
+
+  if (groupLabel) {
+    const groupToggle = page.getByRole('button', { name: groupLabel, exact: true })
+
+    if ((await groupToggle.getAttribute('aria-expanded')) !== 'true') {
+      await groupToggle.click()
+    }
+  }
+
+  await page.getByRole('button', { name: label, exact: true }).click()
+}
 
 export const successMessage = (page, text) => page.locator('p.feedback.success', { hasText: text })
 
@@ -10,7 +35,7 @@ export const toastMessage = (page, text) => page.getByRole('heading', { name: te
 // Registra una entrada de Materia Prima (Platano Verde) y devuelve el id de la entrada,
 // leido del modal "Ver detalle" (la tabla de entradas no muestra el id directamente).
 export async function createMateriaPrimaEntry(page, docRef) {
-  await page.getByRole('button', { name: 'Entradas', exact: true }).click()
+  await goToModule(page, 'Entradas')
   await page.getByRole('button', { name: 'Agregar' }).click()
 
   await page.getByLabel('Proveedor *').selectOption({ index: 1 })
@@ -45,7 +70,7 @@ export async function createMateriaPrimaEntry(page, docRef) {
 // Acepta el lote pendiente creado por createMateriaPrimaEntry con el estado de maduracion
 // indicado (por defecto "Verde", que deja el sub-lote Activo). Devuelve el id_lote_mp.
 export async function acceptPendingLot(page, entryId, estadoMaduracion = 'Verde') {
-  await page.getByRole('button', { name: 'Maduracion MP', exact: true }).click()
+  await goToModule(page, 'Maduracion MP')
   const pendingTable = page.locator('table.providers-table').first()
   const pendingRow = pendingTable.locator('tbody tr').filter({ hasText: `#${entryId}` })
   await expect(pendingRow).toHaveCount(1)

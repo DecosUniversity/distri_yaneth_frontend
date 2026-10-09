@@ -163,6 +163,18 @@ export const getProduccionPorProductoReportRequest = async (token) => {
   return parseResponse(response, 'No se pudo obtener el reporte de produccion por producto')
 }
 
+export const getProductividadReportRequest = async (agrupacion, token) => {
+  const response = await fetch(
+    `${API_BASE_URL}/api/produccion/reportes/productividad?agrupacion=${encodeURIComponent(agrupacion)}`,
+    {
+      method: 'GET',
+      headers: buildHeaders(token),
+    }
+  )
+
+  return parseResponse(response, 'No se pudo obtener el reporte de productividad')
+}
+
 export const getProductionProcessRequest = async (processId, token) => {
   const response = await fetch(`${API_BASE_URL}/api/produccion/procesos/${processId}`, {
     method: 'GET',
@@ -252,6 +264,25 @@ export const deleteProductionProcessRequest = async (processId, token) => {
     const data = await response.json().catch(() => null)
     throw new Error(data?.message || 'No se pudo eliminar el proceso de produccion')
   }
+}
+
+export const getProductStageRequirementsRequest = async (idProducto, token) => {
+  const response = await fetch(`${API_BASE_URL}/api/produccion/etapas-requeridas/${idProducto}`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  })
+
+  return parseResponse(response, 'No se pudo obtener la receta de etapas del producto')
+}
+
+export const replaceProductStageRequirementsRequest = async (idProducto, etapas, token) => {
+  const response = await fetch(`${API_BASE_URL}/api/produccion/etapas-requeridas/${idProducto}`, {
+    method: 'PUT',
+    headers: buildHeaders(token),
+    body: JSON.stringify({ etapas }),
+  })
+
+  return parseResponse(response, 'No se pudo guardar la receta de etapas del producto')
 }
 
 export const revertProductionProcessRequest = async (processId, payload, token) => {

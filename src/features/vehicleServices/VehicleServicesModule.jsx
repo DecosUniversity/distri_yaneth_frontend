@@ -64,6 +64,7 @@ function VehicleServicesModule({ token, isActive }) {
   const [serviceTypes, setServiceTypes] = useState([])
   const [form, setForm] = useState(EMPTY_FORM)
   const [editingServiceId, setEditingServiceId] = useState(null)
+  const [formOpen, setFormOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -144,6 +145,7 @@ function VehicleServicesModule({ token, isActive }) {
 
       setForm(EMPTY_FORM)
       setEditingServiceId(null)
+      setFormOpen(false)
       await loadData()
     } catch (error) {
       const message = error.message || 'No se pudo guardar el servicio de vehiculo'
@@ -152,6 +154,13 @@ function VehicleServicesModule({ token, isActive }) {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const openCreateForm = () => {
+    setForm(EMPTY_FORM)
+    setNoticeMessage('')
+    setErrorMessage('')
+    setFormOpen(true)
   }
 
   const handleEdit = (service) => {
@@ -176,12 +185,14 @@ function VehicleServicesModule({ token, isActive }) {
     })
     setNoticeMessage('')
     setErrorMessage('')
+    setFormOpen(true)
   }
 
   const cancelEdit = () => {
     setEditingServiceId(null)
     setForm(EMPTY_FORM)
     setNoticeMessage('')
+    setFormOpen(false)
   }
 
   const handleDelete = async (serviceId) => {
@@ -225,8 +236,14 @@ function VehicleServicesModule({ token, isActive }) {
           <h3>Servicios de Vehiculo</h3>
           <p>Registro de mantenimientos, costos y proximo kilometraje por unidad.</p>
         </div>
+        {!formOpen ? (
+          <button type="button" className="primary-button" onClick={openCreateForm}>
+            + Agregar servicio
+          </button>
+        ) : null}
       </div>
 
+      {formOpen ? (
       <form className="provider-form" onSubmit={handleSubmit}>
         <div className="provider-form-grid">
           <label>
@@ -327,13 +344,12 @@ function VehicleServicesModule({ token, isActive }) {
             {isSubmitting ? 'Guardando...' : editingServiceId ? 'Actualizar servicio' : 'Crear servicio'}
           </button>
 
-          {editingServiceId ? (
-            <button type="button" className="secondary-button" onClick={cancelEdit} disabled={isSubmitting}>
-              Cancelar edicion
-            </button>
-          ) : null}
+          <button type="button" className="secondary-button" onClick={cancelEdit} disabled={isSubmitting}>
+            {editingServiceId ? 'Cancelar edicion' : 'Cancelar'}
+          </button>
         </div>
       </form>
+      ) : null}
 
       {errorMessage ? <p className="feedback error">{errorMessage}</p> : null}
       {noticeMessage ? <p className="feedback success">{noticeMessage}</p> : null}

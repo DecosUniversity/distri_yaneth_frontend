@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { authFile } from './test-users.js'
-import { createMateriaPrimaEntry, successMessage } from './helpers.js'
+import { createMateriaPrimaEntry, goToModule, successMessage } from './helpers.js'
 
 test.describe('Modulo Maduracion - flujo de lotes y sub-lotes', () => {
   test.use({ storageState: authFile('Administrador') })
@@ -12,7 +12,7 @@ test.describe('Modulo Maduracion - flujo de lotes y sub-lotes', () => {
     await page.goto('/')
     const entryId = await createMateriaPrimaEntry(page, docRef)
 
-    await page.getByRole('button', { name: 'Maduracion MP', exact: true }).click()
+    await goToModule(page, 'Maduracion MP')
     const pendingTable = page.locator('table.providers-table').first()
     const pendingRow = pendingTable.locator('tbody tr').filter({ hasText: `#${entryId}` })
     await expect(pendingRow).toHaveCount(1)
@@ -29,7 +29,7 @@ test.describe('Modulo Maduracion - flujo de lotes y sub-lotes', () => {
     await page.goto('/')
     const entryId = await createMateriaPrimaEntry(page, docRef)
 
-    await page.getByRole('button', { name: 'Maduracion MP', exact: true }).click()
+    await goToModule(page, 'Maduracion MP')
     const pendingTable = page.locator('table.providers-table').first()
     const pendingRow = pendingTable.locator('tbody tr').filter({ hasText: `#${entryId}` })
     await expect(pendingRow).toHaveCount(1)

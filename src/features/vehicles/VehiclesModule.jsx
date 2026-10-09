@@ -33,6 +33,7 @@ function VehiclesModule({ token, isActive, roleName }) {
   const [vehicles, setVehicles] = useState([])
   const [vehicleForm, setVehicleForm] = useState(EMPTY_VEHICLE_FORM)
   const [editingVehicleId, setEditingVehicleId] = useState(null)
+  const [formOpen, setFormOpen] = useState(false)
   const [isVehiclesLoading, setIsVehiclesLoading] = useState(false)
   const [isVehicleSubmitting, setIsVehicleSubmitting] = useState(false)
   const [vehiclesError, setVehiclesError] = useState('')
@@ -97,6 +98,7 @@ function VehiclesModule({ token, isActive, roleName }) {
 
       setVehicleForm(EMPTY_VEHICLE_FORM)
       setEditingVehicleId(null)
+      setFormOpen(false)
       await loadVehicles()
     } catch (error) {
       const message = error.message || 'No se pudo guardar vehiculo'
@@ -105,6 +107,13 @@ function VehiclesModule({ token, isActive, roleName }) {
     } finally {
       setIsVehicleSubmitting(false)
     }
+  }
+
+  const openCreateForm = () => {
+    setVehicleForm(EMPTY_VEHICLE_FORM)
+    setVehiclesNotice('')
+    setVehiclesError('')
+    setFormOpen(true)
   }
 
   const handleVehicleEdit = (vehicle) => {
@@ -120,12 +129,14 @@ function VehiclesModule({ token, isActive, roleName }) {
     })
     setVehiclesNotice('')
     setVehiclesError('')
+    setFormOpen(true)
   }
 
   const cancelVehicleEdit = () => {
     setEditingVehicleId(null)
     setVehicleForm(EMPTY_VEHICLE_FORM)
     setVehiclesNotice('')
+    setFormOpen(false)
   }
 
   const handleKilometrajeChange = (event) => {
@@ -173,8 +184,14 @@ function VehiclesModule({ token, isActive, roleName }) {
           <h3>Modulo Vehiculos</h3>
           <p>Gestion de flotilla para operaciones logisticas.</p>
         </div>
+        {!formOpen && !isPilot ? (
+          <button type="button" className="primary-button" onClick={openCreateForm}>
+            + Agregar vehiculo
+          </button>
+        ) : null}
       </div>
 
+      {formOpen || isPilot ? (
       <form className="provider-form" onSubmit={handleVehicleSubmit}>
         <div className="provider-form-grid">
           <label>
@@ -245,18 +262,19 @@ function VehiclesModule({ token, isActive, roleName }) {
                 : 'Crear vehiculo'}
           </button>
 
-          {editingVehicleId && !isPilot ? (
+          {!isPilot ? (
             <button
               type="button"
               className="secondary-button"
               onClick={cancelVehicleEdit}
               disabled={isVehicleSubmitting}
             >
-              Cancelar edicion
+              {editingVehicleId ? 'Cancelar edicion' : 'Cancelar'}
             </button>
           ) : null}
         </div>
       </form>
+      ) : null}
 
       {vehiclesError ? <p className="feedback error">{vehiclesError}</p> : null}
       {vehiclesNotice ? <p className="feedback success">{vehiclesNotice}</p> : null}

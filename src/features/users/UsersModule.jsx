@@ -21,6 +21,7 @@ const EMPTY_USER_FORM = {
 function UsersModule({ token, isActive }) {
   const [users, setUsers] = useState([])
   const [userForm, setUserForm] = useState(EMPTY_USER_FORM)
+  const [formOpen, setFormOpen] = useState(false)
   const [isUsersLoading, setIsUsersLoading] = useState(false)
   const [isUserSubmitting, setIsUserSubmitting] = useState(false)
   const [usersError, setUsersError] = useState('')
@@ -68,6 +69,7 @@ function UsersModule({ token, isActive }) {
       setUsersNotice('Usuario creado correctamente')
       notifySuccess('Usuario creado correctamente')
       setUserForm(EMPTY_USER_FORM)
+      setFormOpen(false)
       await loadUsers()
     } catch (error) {
       const message = error.message || 'No se pudo crear usuario'
@@ -76,6 +78,20 @@ function UsersModule({ token, isActive }) {
     } finally {
       setIsUserSubmitting(false)
     }
+  }
+
+  const openCreateForm = () => {
+    setUserForm(EMPTY_USER_FORM)
+    setUsersNotice('')
+    setUsersError('')
+    setFormOpen(true)
+  }
+
+  const closeCreateForm = () => {
+    setUserForm(EMPTY_USER_FORM)
+    setUsersNotice('')
+    setUsersError('')
+    setFormOpen(false)
   }
 
   const handleResetPassword = async (user) => {
@@ -131,8 +147,14 @@ function UsersModule({ token, isActive }) {
           <h3>Modulo Usuarios</h3>
           <p>Crear, eliminar y restablecer password de usuarios del sistema.</p>
         </div>
+        {!formOpen ? (
+          <button type="button" className="primary-button" onClick={openCreateForm}>
+            + Agregar usuario
+          </button>
+        ) : null}
       </div>
 
+      {formOpen ? (
       <form className="provider-form" onSubmit={handleUserSubmit}>
         <div className="provider-form-grid">
           <label>
@@ -188,8 +210,12 @@ function UsersModule({ token, isActive }) {
           <button type="submit" disabled={isUserSubmitting}>
             {isUserSubmitting ? 'Guardando...' : 'Crear usuario'}
           </button>
+          <button type="button" className="secondary-button" onClick={closeCreateForm} disabled={isUserSubmitting}>
+            Cancelar
+          </button>
         </div>
       </form>
+      ) : null}
 
       {usersError ? <p className="feedback error">{usersError}</p> : null}
       {usersNotice ? <p className="feedback success">{usersNotice}</p> : null}

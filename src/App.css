@@ -395,6 +395,30 @@
   border-color: rgba(235, 255, 224, 0.45);
 }
 
+.sidebar-group {
+  display: grid;
+  gap: 6px;
+}
+
+.sidebar-group-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sidebar-group-items {
+  display: grid;
+  gap: 6px;
+  padding-left: 12px;
+  margin-left: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.sidebar-sublink {
+  font-size: 0.92rem;
+}
+
 .logout-button {
   margin-top: auto;
   border: 1px solid rgba(255, 255, 255, 0.24);
@@ -705,7 +729,9 @@
   margin-top: 10px;
   border: 1px solid #cfe3c4;
   border-radius: 10px;
-  overflow: hidden;
+  max-height: 220px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .chart-data-table {
@@ -726,12 +752,15 @@
   }
 
   th {
+    position: sticky;
+    top: 0;
     background: #eff8e8;
     color: #2a5a32;
     font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.02em;
+    z-index: 1;
   }
 
   td:last-child,
@@ -843,6 +872,7 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
+  margin-bottom: 14px;
 }
 
 .maturation-tab-button {
@@ -1051,6 +1081,17 @@
   width: min(1180px, 100%);
 }
 
+/* Vista de detalle en linea (reemplaza una modal "Gestionar" que abriria otras modales
+   encima): mismo aspecto de tarjeta que .modal-card, pero como contenido normal de la
+   pagina en vez de un overlay fijo, para no encadenar varias modales. */
+.inline-detail-view {
+  background: #fbfff8;
+  border: 1px solid #cfe3c4;
+  border-radius: 18px;
+  padding: 20px;
+  margin-top: 12px;
+}
+
 .full-width-field {
   grid-column: 1 / -1;
 }
@@ -1070,6 +1111,17 @@
     background: linear-gradient(90deg, var(--green-700) 0%, var(--green-500) 100%);
     cursor: pointer;
   }
+}
+
+.primary-button {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font: inherit;
+  font-weight: 700;
+  color: #f8ffef;
+  background: linear-gradient(90deg, var(--green-700) 0%, var(--green-500) 100%);
+  cursor: pointer;
 }
 
 .secondary-button,
@@ -1298,6 +1350,30 @@
 
   .provider-form-actions {
     flex-wrap: wrap;
+  }
+
+  /* Barra de varios botones de accion (p.ej. Agregar etapa/merma/insumo/... en una vista de
+     detalle): en vez de que se envuelvan de forma irregular segun el largo del texto, se
+     acomodan en una cuadricula pareja de 2 columnas. */
+  .provider-form-actions.detail-action-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .provider-form-actions.detail-action-toolbar button {
+    width: 100%;
+  }
+
+  /* Los botones de acciones dentro de una fila de tabla (Editar/Eliminar/Finalizar/...) se
+     envuelven en vez de forzar la tabla a ser mas ancha de lo necesario. */
+  .table-actions {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .provider-form-actions.detail-action-toolbar {
+    grid-template-columns: 1fr;
   }
 }
 

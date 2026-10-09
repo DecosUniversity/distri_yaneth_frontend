@@ -18,7 +18,7 @@ import ServiceTypesModule from '../features/serviceTypes/ServiceTypesModule'
 import UsersModule from '../features/users/UsersModule'
 import VehiclesModule from '../features/vehicles/VehiclesModule'
 import VehicleServicesModule from '../features/vehicleServices/VehicleServicesModule'
-import { canAccessModule, getAllowedModules, MODULE_DEFINITIONS } from '../config/rolePermissions'
+import { canAccessModule, getAllowedModules, getNavigationTree, MODULE_DEFINITIONS } from '../config/rolePermissions'
 
 const MOBILE_BREAKPOINT = 979
 
@@ -50,6 +50,7 @@ function DashboardPage({ onLogout, session }) {
 
   const roleName = session.user?.rol || 'Piloto'
   const allowedModules = useMemo(() => getAllowedModules(roleName), [roleName])
+  const navigationTree = useMemo(() => getNavigationTree(roleName), [roleName])
   const defaultModuleKey = allowedModules[0]?.key || 'dashboard'
 
   useEffect(() => {
@@ -92,7 +93,7 @@ function DashboardPage({ onLogout, session }) {
     <main className={`dashboard-layout ${isSidebarVisible ? 'sidebar-open' : 'sidebar-hidden'}`}>
       <Sidebar
         activeMenu={activeMenu}
-        modules={allowedModules}
+        navigationTree={navigationTree}
         onLogout={onLogout}
         onSelectMenu={handleMenuSelection}
       />

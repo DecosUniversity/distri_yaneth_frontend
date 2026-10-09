@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { authFile } from './test-users.js'
+import { goToModule } from './helpers.js'
 
 const successMessage = (page, text) => page.locator('p.feedback.success', { hasText: text })
 
@@ -13,7 +14,7 @@ test.describe('Modulo Entradas - CRUD', () => {
     const docRef = `E2E-DOC-${Date.now().toString(36)}`
 
     await page.goto('/')
-    await page.getByRole('button', { name: 'Entradas', exact: true }).click()
+    await goToModule(page, 'Entradas')
     await page.getByRole('button', { name: 'Agregar' }).click()
 
     await page.getByLabel('Proveedor *').selectOption({ index: 1 })

@@ -40,12 +40,6 @@ export const listGreenNetsBySublotRequest = async (sublotId, token) => {
   return parseResponse(response, 'No se pudieron obtener las redes verdes del sub-lote')
 }
 
-export const createGreenNetRequest = async (payload, token) => {
-  const response = await fetch(`${API_BASE_URL}/api/redes-verdes`, {
-    method: 'POST',
-    headers: buildHeaders(token),
-    body: JSON.stringify(payload),
-  })
-
-  return parseResponse(response, 'No se pudo registrar la red de platano verde')
-}
+// El empaque de redes se estandarizo dentro de Produccion ("+ Empacar red" en ProductionModule,
+// que reutiliza createProductionProcessRequest/addProductionStageRequest): ya no existe un
+// endpoint para crear redes aqui, solo lectura del historico previo a ese cambio.

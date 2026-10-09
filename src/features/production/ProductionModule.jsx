@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { listReadyForProductionRequest } from '../../services/maturation.service'
+import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { listReadyForProductionRequest, listSublotsRequest } from '../../services/maturation.service'
 import { downloadTraceabilityLabelPdf } from '../../utils/traceabilityLabel'
 import { listProductsRequest } from '../../services/product.service'
 import {
@@ -16,10 +17,13 @@ import {
   createStageTypeRequest,
   finalizeProductionProcessRequest,
   getProductionProcessRequest,
+  getProductStageRequirementsRequest,
+  getProductividadReportRequest,
   listMermaTypesRequest,
   listProductionOrdersRequest,
   listProductionProcessesRequest,
   listStageTypesRequest,
+  replaceProductStageRequirementsRequest,
   revertProductionProcessRequest,
   updateProductionStageRequest,
 } from '../../services/production.service'
@@ -28,6 +32,8 @@ import { notifyError, notifySuccess } from '../../utils/toast'
 
 const FINISHED_PRODUCT_TYPE = 'Producto Terminado'
 const INSUMO_PRODUCT_TYPE = 'Insumo'
+const GREEN_RIPENESS_STATE = 'Verde'
+const SUBLOT_ACTIVE_STATE = 'Activo'
 const PRODUCTION_ORDER_PENDIENTE_STATE = 'Pendiente'
 const PRODUCTION_ORDER_EN_PROCESO_STATE = 'En Proceso'
 const PRODUCTION_ORDER_ACTIVE_STATES = new Set([PRODUCTION_ORDER_PENDIENTE_STATE, PRODUCTION_ORDER_EN_PROCESO_STATE])
@@ -41,6 +47,13 @@ const PROCESS_TABS = [
 ]
 const GESTION_PROCESS_STATES = new Set([PROCESS_ACTIVE_STATE, PROCESS_PAUSED_STATE])
 
+const PRODUCTIVITY_CHART_COLOR = '#2f7035'
+const PRODUCTIVITY_GROUPINGS = [
+  { key: 'mensual', label: 'Mensual' },
+  { key: 'semanal', label: 'Semanal' },
+  { key: 'producto', label: 'Por producto' },
+]
+
 const EMPTY_PROCESS_FORM = {
   id_sublote: '',
   id_producto_resultado: '',
@@ -51,6 +64,19 @@ const EMPTY_PROCESS_FORM = {
   ubicacion_cuarto_congelado: '',
   observaciones: '',
 }
+
+const EMPTY_GREEN_PACK_FORM = {
+  id_sublote: '',
+  id_producto_resultado: '',
+  id_tipo_etapa: '',
+  cantidad_personas: '',
+  fecha_inicio: '',
+  observaciones: '',
+}
+
+const EMPTY_CAJA_ROW = { cantidad_redes: '', peso_kg: '' }
+
+const EMPTY_CAJAS_QUICK_FILL = { numero_cajas: '', redes_por_caja: '', peso_por_caja: '' }
 
 const EMPTY_STAGE_FORM = {
   id_tipo_etapa: '',
@@ -184,6 +210,18 @@ function ProductionModule({ token, isActive, roleName }) {
   const [stageTypes, setStageTypes] = useState([])
   const [productionOrders, setProductionOrders] = useState([])
   const [processForm, setProcessForm] = useState(EMPTY_PROCESS_FORM)
+  const [processFormOpen, setProcessFormOpen] = useState(false)
+
+  // Empacar red: mismo mecanismo de produccion (crear proceso + registrar etapa), pero desde
+  // un sub-lote Verde que aun no termino de madurar, en vez de uno "Listo para produccion".
+  const [allSublots, setAllSublots] = useState([])
+  const [greenPackForm, setGreenPackForm] = useState(EMPTY_GREEN_PACK_FORM)
+  const [greenPackFormOpen, setGreenPackFormOpen] = useState(false)
+  const [greenPackCajas, setGreenPackCajas] = useState([{ ...EMPTY_CAJA_ROW }])
+  const [greenPackQuickFill, setGreenPackQuickFill] = useState(EMPTY_CAJAS_QUICK_FILL)
+  const [greenPackStageOptions, setGreenPackStageOptions] = useState([])
+  const [isLoadingGreenPackPlan, setIsLoadingGreenPackPlan] = useState(false)
+  const [isSubmittingGreenPack, setIsSubmittingGreenPack] = useState(false)
   const [selectedTab, setSelectedTab] = useState(PROCESS_ACTIVE_STATE)
   const [viewMode, setViewMode] = useState('gestion')
   const [filters, setFilters] = useState({ proceso: '', producto: '', mes: '' })
@@ -213,7 +251,23 @@ function ProductionModule({ token, isActive, roleName }) {
   const [coldRoomForm, setColdRoomForm] = useState(EMPTY_COLD_ROOM_FORM)
   const [finalizeForm, setFinalizeForm] = useState(EMPTY_FINALIZE_FORM)
   const [productionOrderForm, setProductionOrderForm] = useState(EMPTY_PRODUCTION_ORDER_FORM)
+  const [productionOrderFormOpen, setProductionOrderFormOpen] = useState(false)
   const [isSubmittingProductionOrder, setIsSubmittingProductionOrder] = useState(false)
+
+  const [productivityGrouping, setProductivityGrouping] = useState('mensual')
+  const [productivityReport, setProductivityReport] = useState([])
+  const [isLoadingProductivity, setIsLoadingProductivity] = useState(false)
+  const [productivityError, setProductivityError] = useState('')
+  const [hasLoadedProductivity, setHasLoadedProductivity] = useState(false)
+
+  const [requirementsProductId, setRequirementsProductId] = useState('')
+  const [requirementsDraft, setRequirementsDraft] = useState([])
+  const [requirementsNewStageId, setRequirementsNewStageId] = useState('')
+  const [isLoadingRequirements, setIsLoadingRequirements] = useState(false)
+  const [isSavingRequirements, setIsSavingRequirements] = useState(false)
+  const [requirementsError, setRequirementsError] = useState('')
+  const [requirementsNotice, setRequirementsNotice] = useState('')
+  const [detailRequiredStages, setDetailRequiredStages] = useState([])
 
   useEffect(() => {
     if (!isActive) {
@@ -229,17 +283,20 @@ function ProductionModule({ token, isActive, roleName }) {
     setIsLoading(true)
 
     try {
-      const [processesData, sublotsData, productsData, mermaTypesData, stageTypesData, productionOrdersData] = await Promise.all([
-        listProductionProcessesRequest(token),
-        listReadyForProductionRequest(token),
-        listProductsRequest(token),
-        listMermaTypesRequest(token),
-        listStageTypesRequest(token),
-        listProductionOrdersRequest(token),
-      ])
+      const [processesData, sublotsData, allSublotsData, productsData, mermaTypesData, stageTypesData, productionOrdersData] =
+        await Promise.all([
+          listProductionProcessesRequest(token),
+          listReadyForProductionRequest(token),
+          listSublotsRequest(token),
+          listProductsRequest(token),
+          listMermaTypesRequest(token),
+          listStageTypesRequest(token),
+          listProductionOrdersRequest(token),
+        ])
 
       setProcesses(Array.isArray(processesData) ? processesData : [])
       setSublots(Array.isArray(sublotsData) ? sublotsData : [])
+      setAllSublots(Array.isArray(allSublotsData) ? allSublotsData : [])
       setProducts(Array.isArray(productsData) ? productsData : [])
       setMermaTypes(Array.isArray(mermaTypesData) ? mermaTypesData : [])
       setStageTypes(Array.isArray(stageTypesData) ? stageTypesData : [])
@@ -250,6 +307,40 @@ function ProductionModule({ token, isActive, roleName }) {
       setIsLoading(false)
     }
   }
+
+  const loadProductivityReport = async (agrupacion) => {
+    setProductivityError('')
+    setIsLoadingProductivity(true)
+
+    try {
+      const rows = await getProductividadReportRequest(agrupacion, token)
+      setProductivityReport(Array.isArray(rows) ? rows : [])
+    } catch (error) {
+      setProductivityError(error.message || 'No se pudo obtener el reporte de productividad')
+    } finally {
+      setIsLoadingProductivity(false)
+      setHasLoadedProductivity(true)
+    }
+  }
+
+  useEffect(() => {
+    if (!isActive || viewMode !== 'productividad') {
+      return
+    }
+
+    loadProductivityReport(productivityGrouping)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, viewMode, productivityGrouping, token])
+
+  const productivityChartData = productivityReport.map((row) => ({
+    etiqueta:
+      productivityGrouping === 'producto'
+        ? row.producto_nombre
+        : `${row.periodo || '-'} · ${row.producto_nombre}`,
+    producto: row.producto_nombre,
+    periodo: row.periodo,
+    kgPorHoraPersona: Number(row.kg_por_hora_persona) || 0,
+  }))
 
   const handleProcessFieldChange = (event) => {
     const { name, value } = event.target
@@ -282,6 +373,13 @@ function ProductionModule({ token, isActive, roleName }) {
 
   const availableSublots = sublots.filter((sublot) => Number(sublot.peso_kg) > 0)
 
+  const greenAvailableSublots = allSublots.filter(
+    (sublot) =>
+      sublot.estado_maduracion === GREEN_RIPENESS_STATE &&
+      sublot.estado_registro === SUBLOT_ACTIVE_STATE &&
+      Number(sublot.peso_kg) > 0
+  )
+
   const finishedProducts = products.filter(
     (product) => String(product.tipo_producto || '').trim() === FINISHED_PRODUCT_TYPE
   )
@@ -294,11 +392,38 @@ function ProductionModule({ token, isActive, roleName }) {
     (sublot) => String(sublot.id_sublote) === String(processForm.id_sublote)
   )
 
+  const selectedGreenSublotForForm = greenAvailableSublots.find(
+    (sublot) => String(sublot.id_sublote) === String(greenPackForm.id_sublote)
+  )
+
+  const validGreenPackCajas = greenPackCajas.filter((caja) => caja.cantidad_redes !== '' && caja.peso_kg !== '')
+  const greenPackCajasTotalRedes = validGreenPackCajas.reduce((sum, caja) => sum + (Number(caja.cantidad_redes) || 0), 0)
+  const greenPackCajasTotalPeso = validGreenPackCajas.reduce((sum, caja) => sum + (Number(caja.peso_kg) || 0), 0)
+
+  // Si el producto elegido tiene un plan de etapas definido, solo se puede empacar con una
+  // etapa de ese plan (igual que en "Agregar etapa" dentro de un proceso ya iniciado). Sin
+  // plan definido (producto legado), se puede elegir cualquier etapa del catalogo.
+  const greenPackStageTypeOptions = greenPackStageOptions.length > 0 ? greenPackStageOptions : stageTypes
+
   const matchingProductionOrders = productionOrders.filter(
     (order) =>
       PRODUCTION_ORDER_ACTIVE_STATES.has(order.estado) &&
       String(order.id_producto) === String(processForm.id_producto_resultado)
   )
+
+  const requirementsDraftIds = new Set(requirementsDraft.map((item) => item.id_tipo_etapa))
+  const availableStageTypesForRequirement = stageTypes.filter(
+    (stageType) => !requirementsDraftIds.has(stageType.id_tipo_etapa)
+  )
+
+  // Si el producto del proceso tiene un plan de etapas definido, solo se puede registrar/editar
+  // una etapa que forme parte de ese plan (no se permite "usar procesos diferentes" a los
+  // planificados). Un producto sin plan (legado) no se restringe.
+  const requiredStageTypeIds = new Set(detailRequiredStages.map((item) => item.id_tipo_etapa))
+  const stageTypesForCurrentProcess =
+    requiredStageTypeIds.size > 0
+      ? stageTypes.filter((stageType) => requiredStageTypeIds.has(stageType.id_tipo_etapa))
+      : stageTypes
 
   const handleProcessSubmit = async (event) => {
     event.preventDefault()
@@ -322,6 +447,7 @@ function ProductionModule({ token, isActive, roleName }) {
       setModuleNotice('Proceso de produccion iniciado correctamente')
       notifySuccess('Proceso de produccion iniciado correctamente')
       setProcessForm(EMPTY_PROCESS_FORM)
+      setProcessFormOpen(false)
       await loadInitialData()
     } catch (error) {
       const message = error.message || 'No se pudo iniciar el proceso de produccion'
@@ -329,6 +455,169 @@ function ProductionModule({ token, isActive, roleName }) {
       notifyError(message)
     } finally {
       setIsSubmittingProcess(false)
+    }
+  }
+
+  const openProcessForm = () => {
+    setProcessForm(EMPTY_PROCESS_FORM)
+    setModuleError('')
+    setModuleNotice('')
+    setProcessFormOpen(true)
+  }
+
+  const closeProcessForm = () => {
+    setProcessForm(EMPTY_PROCESS_FORM)
+    setModuleError('')
+    setProcessFormOpen(false)
+  }
+
+  const openGreenPackForm = () => {
+    setGreenPackForm(EMPTY_GREEN_PACK_FORM)
+    setGreenPackCajas([{ ...EMPTY_CAJA_ROW }])
+    setGreenPackQuickFill(EMPTY_CAJAS_QUICK_FILL)
+    setGreenPackStageOptions([])
+    setModuleError('')
+    setModuleNotice('')
+    setGreenPackFormOpen(true)
+  }
+
+  const closeGreenPackForm = () => {
+    setGreenPackForm(EMPTY_GREEN_PACK_FORM)
+    setGreenPackCajas([{ ...EMPTY_CAJA_ROW }])
+    setGreenPackQuickFill(EMPTY_CAJAS_QUICK_FILL)
+    setGreenPackStageOptions([])
+    setModuleError('')
+    setGreenPackFormOpen(false)
+  }
+
+  const handleGreenPackFieldChange = (event) => {
+    const { name, value } = event.target
+    setGreenPackForm((previous) => ({ ...previous, [name]: value }))
+  }
+
+  const handleGreenPackProductChange = async (event) => {
+    const { value } = event.target
+    setGreenPackForm((previous) => ({ ...previous, id_producto_resultado: value, id_tipo_etapa: '' }))
+    setGreenPackStageOptions([])
+
+    if (!value) {
+      return
+    }
+
+    setIsLoadingGreenPackPlan(true)
+
+    try {
+      const requirements = await getProductStageRequirementsRequest(Number(value), token)
+      const allowedIds = new Set((Array.isArray(requirements) ? requirements : []).map((item) => item.id_tipo_etapa))
+      setGreenPackStageOptions(stageTypes.filter((stageType) => allowedIds.has(stageType.id_tipo_etapa)))
+    } catch (error) {
+      // Si falla la carga del plan, se deja el catalogo completo como respaldo (mejor dejar
+      // elegir de mas que bloquear por completo el formulario).
+      setGreenPackStageOptions([])
+    } finally {
+      setIsLoadingGreenPackPlan(false)
+    }
+  }
+
+  const handleGreenPackCajaFieldChange = (index, field, value) => {
+    setGreenPackCajas((previous) => {
+      const next = [...previous]
+      next[index] = { ...next[index], [field]: value }
+      return next
+    })
+  }
+
+  const handleAddGreenPackCajaRow = () => {
+    setGreenPackCajas((previous) => [...previous, { ...EMPTY_CAJA_ROW }])
+  }
+
+  const handleRemoveGreenPackCajaRow = (index) => {
+    setGreenPackCajas((previous) => (previous.length === 1 ? previous : previous.filter((_, i) => i !== index)))
+  }
+
+  const handleGreenPackQuickFillChange = (event) => {
+    const { name, value } = event.target
+    setGreenPackQuickFill((previous) => ({ ...previous, [name]: value }))
+  }
+
+  const handleGenerateGreenPackCajas = () => {
+    const numeroCajas = Number.parseInt(greenPackQuickFill.numero_cajas, 10)
+    const redesPorCaja = greenPackQuickFill.redes_por_caja
+    const pesoPorCaja = greenPackQuickFill.peso_por_caja
+
+    if (!Number.isFinite(numeroCajas) || numeroCajas <= 0) {
+      setModuleError('Indica cuantas cajas quieres generar')
+      return
+    }
+
+    const generated = Array.from({ length: numeroCajas }, () => ({
+      cantidad_redes: redesPorCaja,
+      peso_kg: pesoPorCaja,
+    }))
+
+    setGreenPackCajas((previous) => {
+      const existingIsBlank = previous.length === 1 && !previous[0].cantidad_redes && !previous[0].peso_kg
+      return existingIsBlank ? generated : [...previous, ...generated]
+    })
+    setGreenPackQuickFill(EMPTY_CAJAS_QUICK_FILL)
+    setModuleError('')
+  }
+
+  const handleGreenPackSubmit = async (event) => {
+    event.preventDefault()
+    setModuleError('')
+    setModuleNotice('')
+
+    if (validGreenPackCajas.length === 0) {
+      setModuleError('Añade al menos una caja con su cantidad de redes y peso')
+      return
+    }
+
+    if (selectedGreenSublotForForm && greenPackCajasTotalPeso > Number(selectedGreenSublotForForm.peso_kg)) {
+      setModuleError('El peso de las cajas supera el peso disponible del sub-lote')
+      return
+    }
+
+    setIsSubmittingGreenPack(true)
+
+    try {
+      const process = await createProductionProcessRequest(
+        {
+          id_sublote: Number(greenPackForm.id_sublote),
+          id_producto_resultado: Number(greenPackForm.id_producto_resultado),
+          cantidad_ingresada_kg: greenPackCajasTotalPeso,
+          fecha_inicio: emptyToUndefined(greenPackForm.fecha_inicio),
+        },
+        token
+      )
+
+      await addProductionStageRequest(
+        process.id_proceso,
+        {
+          id_tipo_etapa: Number(greenPackForm.id_tipo_etapa),
+          cantidad_personas: Number.parseInt(greenPackForm.cantidad_personas, 10),
+          fecha_inicio: emptyToUndefined(greenPackForm.fecha_inicio) || getNowDateTimeInputValue(),
+          cantidad_entrada_kg: greenPackCajasTotalPeso,
+          observaciones: emptyToUndefined(greenPackForm.observaciones.trim()),
+          cajas: validGreenPackCajas.map((caja) => ({
+            cantidad_redes: Number(caja.cantidad_redes),
+            peso_kg: Number(caja.peso_kg),
+          })),
+        },
+        token
+      )
+
+      const successMessage = `Red empacada: ${validGreenPackCajas.length} caja${validGreenPackCajas.length === 1 ? '' : 's'} (${greenPackCajasTotalRedes} redes, ${formatNumber(greenPackCajasTotalPeso)} kg)`
+      setModuleNotice(successMessage)
+      notifySuccess(successMessage)
+      closeGreenPackForm()
+      await loadInitialData()
+    } catch (error) {
+      const message = error.message || 'No se pudo empacar la red'
+      setModuleError(message)
+      notifyError(message)
+    } finally {
+      setIsSubmittingGreenPack(false)
     }
   }
 
@@ -405,10 +694,15 @@ function ProductionModule({ token, isActive, roleName }) {
     setActiveAction(null)
     setDetailModalOpen(true)
     setSelectedProcess(process)
+    setDetailRequiredStages([])
 
     try {
-      const detail = await getProductionProcessRequest(process.id_proceso, token)
+      const [detail, requiredStages] = await Promise.all([
+        getProductionProcessRequest(process.id_proceso, token),
+        getProductStageRequirementsRequest(process.id_producto_resultado, token).catch(() => []),
+      ])
       setSelectedProcess(detail)
+      setDetailRequiredStages(Array.isArray(requiredStages) ? requiredStages : [])
     } catch (error) {
       setDetailError(error.message || 'No se pudo cargar el detalle del proceso')
     }
@@ -727,6 +1021,19 @@ function ProductionModule({ token, isActive, roleName }) {
     setProductionOrderForm((previous) => ({ ...previous, [name]: value }))
   }
 
+  const openProductionOrderForm = () => {
+    setProductionOrderForm(EMPTY_PRODUCTION_ORDER_FORM)
+    setModuleError('')
+    setModuleNotice('')
+    setProductionOrderFormOpen(true)
+  }
+
+  const closeProductionOrderForm = () => {
+    setProductionOrderForm(EMPTY_PRODUCTION_ORDER_FORM)
+    setModuleError('')
+    setProductionOrderFormOpen(false)
+  }
+
   const handleProductionOrderSubmit = async (event) => {
     event.preventDefault()
     setModuleError('')
@@ -747,6 +1054,7 @@ function ProductionModule({ token, isActive, roleName }) {
       setModuleNotice('Orden de produccion creada correctamente')
       notifySuccess('Orden de produccion creada correctamente')
       setProductionOrderForm(EMPTY_PRODUCTION_ORDER_FORM)
+      setProductionOrderFormOpen(false)
       await loadInitialData()
     } catch (error) {
       const message = error.message || 'No se pudo crear la orden de produccion'
@@ -770,6 +1078,91 @@ function ProductionModule({ token, isActive, roleName }) {
       const message = error.message || 'No se pudo cancelar la orden de produccion'
       setModuleError(message)
       notifyError(message)
+    }
+  }
+
+  const handleRequirementsProductChange = async (event) => {
+    const { value } = event.target
+    setRequirementsProductId(value)
+    setRequirementsDraft([])
+    setRequirementsNewStageId('')
+    setRequirementsError('')
+    setRequirementsNotice('')
+
+    if (!value) {
+      return
+    }
+
+    setIsLoadingRequirements(true)
+
+    try {
+      const requirements = await getProductStageRequirementsRequest(Number(value), token)
+      setRequirementsDraft(Array.isArray(requirements) ? requirements : [])
+    } catch (error) {
+      setRequirementsError(error.message || 'No se pudo cargar la receta del producto')
+    } finally {
+      setIsLoadingRequirements(false)
+    }
+  }
+
+  const handleAddRequirementStage = () => {
+    if (!requirementsNewStageId) {
+      return
+    }
+
+    const stageType = stageTypes.find((item) => String(item.id_tipo_etapa) === requirementsNewStageId)
+
+    if (!stageType) {
+      return
+    }
+
+    setRequirementsDraft((previous) => [
+      ...previous,
+      { id_tipo_etapa: stageType.id_tipo_etapa, nombre_etapa: stageType.nombre_etapa },
+    ])
+    setRequirementsNewStageId('')
+  }
+
+  const handleRemoveRequirementStage = (index) => {
+    setRequirementsDraft((previous) => previous.filter((_, i) => i !== index))
+  }
+
+  const handleMoveRequirementStage = (index, direction) => {
+    setRequirementsDraft((previous) => {
+      const targetIndex = index + direction
+
+      if (targetIndex < 0 || targetIndex >= previous.length) {
+        return previous
+      }
+
+      const next = [...previous]
+      const [moved] = next.splice(index, 1)
+      next.splice(targetIndex, 0, moved)
+      return next
+    })
+  }
+
+  const handleSaveRequirements = async () => {
+    if (!requirementsProductId) {
+      return
+    }
+
+    setRequirementsError('')
+    setRequirementsNotice('')
+    setIsSavingRequirements(true)
+
+    try {
+      const etapas = requirementsDraft.map((item) => item.id_tipo_etapa)
+      const saved = await replaceProductStageRequirementsRequest(Number(requirementsProductId), etapas, token)
+      setRequirementsDraft(Array.isArray(saved) ? saved : [])
+      setRequirementsNotice('Receta de etapas guardada correctamente')
+      notifySuccess('Receta de etapas guardada correctamente')
+    } catch (error) {
+      const message = error.message || 'No se pudo guardar la receta de etapas'
+      setRequirementsError(message)
+      notifyError(message)
+    } finally {
+      setIsSavingRequirements(false)
     }
   }
 
@@ -1062,6 +1455,8 @@ function ProductionModule({ token, isActive, roleName }) {
         </div>
       </div>
 
+      {!detailModalOpen ? (
+      <>
       <div className="maturation-tab-strip" role="tablist" aria-label="Vista de produccion">
         <button
           type="button"
@@ -1090,9 +1485,44 @@ function ProductionModule({ token, isActive, roleName }) {
         >
           Ordenes de produccion
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={viewMode === 'recetas'}
+          className={`secondary-button maturation-tab-button ${viewMode === 'recetas' ? 'is-active' : ''}`}
+          onClick={() => setViewMode('recetas')}
+        >
+          Etapas por producto
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={viewMode === 'productividad'}
+          className={`secondary-button maturation-tab-button ${viewMode === 'productividad' ? 'is-active' : ''}`}
+          onClick={() => setViewMode('productividad')}
+        >
+          Productividad
+        </button>
       </div>
 
-      {viewMode === 'gestion' ? (
+      {viewMode === 'gestion' && !processFormOpen && !greenPackFormOpen ? (
+      <div className="providers-header-row">
+        <div>
+          <h4 style={{ marginTop: 0 }}>Procesos de produccion</h4>
+          <p style={{ margin: 0 }}>Ingresa un sub-lote listo para produccion al piso productivo.</p>
+        </div>
+        <div className="detail-action-toolbar">
+          <button type="button" className="primary-button" onClick={openProcessForm}>
+            + Iniciar proceso
+          </button>
+          <button type="button" className="secondary-button" onClick={openGreenPackForm}>
+            + Empacar red
+          </button>
+        </div>
+      </div>
+      ) : null}
+
+      {viewMode === 'gestion' && processFormOpen ? (
       <form className="provider-form" onSubmit={handleProcessSubmit}>
         <h4 style={{ marginTop: 0 }}>Iniciar proceso de produccion</h4>
         <div className="provider-form-grid">
@@ -1206,11 +1636,242 @@ function ProductionModule({ token, isActive, roleName }) {
           <button type="submit" disabled={isSubmittingProcess}>
             {isSubmittingProcess ? 'Guardando...' : 'Iniciar proceso'}
           </button>
+          <button type="button" className="secondary-button" onClick={closeProcessForm} disabled={isSubmittingProcess}>
+            Cancelar
+          </button>
         </div>
       </form>
       ) : null}
 
-      {viewMode !== 'ordenes' ? (
+      {viewMode === 'gestion' && greenPackFormOpen ? (
+      <form className="provider-form" onSubmit={handleGreenPackSubmit}>
+        <h4 style={{ marginTop: 0 }}>Empacar red</h4>
+        <p className="widget-muted" style={{ marginTop: 0 }}>
+          Empaca un sub-lote Verde (aun sin terminar de madurar) directo en cajas de red, como un proceso de produccion mas.
+        </p>
+        <div className="provider-form-grid">
+          <label>
+            Sub-lote verde disponible *
+            <select name="id_sublote" value={greenPackForm.id_sublote} onChange={handleGreenPackFieldChange} required>
+              <option value="">Selecciona sub-lote</option>
+              {greenAvailableSublots.map((sublot) => (
+                <option key={sublot.id_sublote} value={sublot.id_sublote}>
+                  {`#${sublot.id_sublote} (${sublot.codigo_sublote}) - ${sublot.producto_nombre || `Producto ${sublot.id_producto}`} (disponible ${formatNumber(sublot.peso_kg)} kg)`}
+                </option>
+              ))}
+            </select>
+            {selectedGreenSublotForForm ? (
+              <small>Disponible: {formatNumber(selectedGreenSublotForForm.peso_kg)} kg</small>
+            ) : null}
+          </label>
+
+          <label>
+            Producto resultado (red terminada) *
+            <select
+              name="id_producto_resultado"
+              value={greenPackForm.id_producto_resultado}
+              onChange={handleGreenPackProductChange}
+              required
+            >
+              <option value="">Selecciona producto terminado</option>
+              {finishedProducts.map((product) => (
+                <option key={product.id_producto} value={product.id_producto}>
+                  {product.nombre || `Producto #${product.id_producto}`}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Etapa *
+            <select
+              name="id_tipo_etapa"
+              value={greenPackForm.id_tipo_etapa}
+              onChange={handleGreenPackFieldChange}
+              required
+              disabled={!greenPackForm.id_producto_resultado || isLoadingGreenPackPlan}
+            >
+              <option value="">Selecciona tipo de etapa</option>
+              {greenPackStageTypeOptions.map((stageType) => (
+                <option key={stageType.id_tipo_etapa} value={stageType.id_tipo_etapa}>
+                  {stageType.nombre_etapa}
+                </option>
+              ))}
+            </select>
+            {isLoadingGreenPackPlan ? <small>Cargando plan del producto...</small> : null}
+          </label>
+
+          <label>
+            Cantidad de personas *
+            <input
+              name="cantidad_personas"
+              type="number"
+              min="1"
+              step="1"
+              value={greenPackForm.cantidad_personas}
+              onChange={handleGreenPackFieldChange}
+              placeholder="Ej. 2"
+              required
+            />
+          </label>
+
+          <label>
+            Fecha inicio
+            <input
+              name="fecha_inicio"
+              type="datetime-local"
+              value={greenPackForm.fecha_inicio}
+              onChange={handleGreenPackFieldChange}
+            />
+          </label>
+
+          <label>
+            Observaciones
+            <input
+              name="observaciones"
+              type="text"
+              value={greenPackForm.observaciones}
+              onChange={handleGreenPackFieldChange}
+              placeholder="Opcional"
+            />
+          </label>
+        </div>
+
+        <div className="maturation-section-divider" aria-hidden="true" />
+
+        <h4>Cajas a registrar</h4>
+        <p className="widget-muted" style={{ margin: '0 0 10px' }}>
+          Cada caja es un registro (no cada red suelta): indica cuantas redes contiene y el peso total de la caja.
+          Si vas a registrar varias cajas iguales, usa el generador rapido.
+        </p>
+
+        <div className="maturation-filter-panel">
+          <div className="maturation-filter-grid">
+            <label className="maturation-filter-field">
+              <span className="maturation-filter-label">Cantidad de cajas</span>
+              <input
+                name="numero_cajas"
+                type="number"
+                min="1"
+                step="1"
+                value={greenPackQuickFill.numero_cajas}
+                onChange={handleGreenPackQuickFillChange}
+                placeholder="ej. 10"
+                className="maturation-filter-input"
+              />
+            </label>
+            <label className="maturation-filter-field">
+              <span className="maturation-filter-label">Redes por caja</span>
+              <input
+                name="redes_por_caja"
+                type="number"
+                min="1"
+                step="1"
+                value={greenPackQuickFill.redes_por_caja}
+                onChange={handleGreenPackQuickFillChange}
+                placeholder="ej. 50"
+                className="maturation-filter-input"
+              />
+            </label>
+            <label className="maturation-filter-field">
+              <span className="maturation-filter-label">Peso por caja (kg)</span>
+              <input
+                name="peso_por_caja"
+                type="number"
+                min="0"
+                step="0.01"
+                value={greenPackQuickFill.peso_por_caja}
+                onChange={handleGreenPackQuickFillChange}
+                placeholder="ej. 25.00"
+                className="maturation-filter-input"
+              />
+            </label>
+          </div>
+          <div className="maturation-filter-actions">
+            <button type="button" className="secondary-button" onClick={handleGenerateGreenPackCajas}>
+              Generar cajas
+            </button>
+          </div>
+        </div>
+
+        <div className="providers-table-wrap table-limited">
+          <table className="providers-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Redes en la caja</th>
+                <th>Peso de la caja (kg)</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {greenPackCajas.map((caja, index) => (
+                <tr key={index}>
+                  <td>{index + 1}</td>
+                  <td>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={caja.cantidad_redes}
+                      onChange={(event) => handleGreenPackCajaFieldChange(index, 'cantidad_redes', event.target.value)}
+                      placeholder="0"
+                      className="maturation-filter-input"
+                      style={{ width: '100%' }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={caja.peso_kg}
+                      onChange={(event) => handleGreenPackCajaFieldChange(index, 'peso_kg', event.target.value)}
+                      placeholder="0.00"
+                      className="maturation-filter-input"
+                      style={{ width: '100%' }}
+                    />
+                  </td>
+                  <td className="table-actions">
+                    <button
+                      type="button"
+                      className="danger-button"
+                      onClick={() => handleRemoveGreenPackCajaRow(index)}
+                      disabled={greenPackCajas.length === 1}
+                    >
+                      Quitar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="provider-form-actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <button type="button" className="secondary-button" onClick={handleAddGreenPackCajaRow}>
+            + Agregar caja
+          </button>
+          <p style={{ margin: 0 }}>
+            {validGreenPackCajas.length} caja{validGreenPackCajas.length === 1 ? '' : 's'} · {greenPackCajasTotalRedes} redes · {formatNumber(greenPackCajasTotalPeso)} kg
+            {selectedGreenSublotForForm && greenPackCajasTotalPeso > Number(selectedGreenSublotForForm.peso_kg) ? (
+              <span style={{ color: '#8f1b1b', fontWeight: 700 }}> - supera el disponible ({formatNumber(selectedGreenSublotForForm.peso_kg)} kg)</span>
+            ) : null}
+          </p>
+        </div>
+
+        <div className="provider-form-actions">
+          <button type="submit" disabled={isSubmittingGreenPack}>
+            {isSubmittingGreenPack ? 'Guardando...' : `Empacar ${validGreenPackCajas.length || ''} caja${validGreenPackCajas.length === 1 ? '' : 's'}`}
+          </button>
+          <button type="button" className="secondary-button" onClick={closeGreenPackForm} disabled={isSubmittingGreenPack}>
+            Cancelar
+          </button>
+        </div>
+      </form>
+      ) : null}
+
+      {viewMode === 'gestion' || viewMode === 'consultar' ? (
       <>
       <div className="maturation-tab-strip">
         {visibleProcessTabs.map((tab) => (
@@ -1343,8 +2004,21 @@ function ProductionModule({ token, isActive, roleName }) {
         </table>
       </div>
       </>
-      ) : (
+      ) : viewMode === 'ordenes' ? (
       <>
+        {!productionOrderFormOpen ? (
+        <div className="providers-header-row">
+          <div>
+            <h4 style={{ marginTop: 0 }}>Ordenes de produccion</h4>
+            <p style={{ margin: 0 }}>Guias de cuanto producto terminado hay que producir.</p>
+          </div>
+          <button type="button" className="primary-button" onClick={openProductionOrderForm}>
+            + Nueva orden
+          </button>
+        </div>
+        ) : null}
+
+        {productionOrderFormOpen ? (
         <form className="provider-form" onSubmit={handleProductionOrderSubmit}>
           <h4 style={{ marginTop: 0 }}>Nueva orden de produccion</h4>
           <div className="provider-form-grid">
@@ -1404,8 +2078,17 @@ function ProductionModule({ token, isActive, roleName }) {
             <button type="submit" disabled={isSubmittingProductionOrder}>
               {isSubmittingProductionOrder ? 'Guardando...' : 'Crear orden'}
             </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={closeProductionOrderForm}
+              disabled={isSubmittingProductionOrder}
+            >
+              Cancelar
+            </button>
           </div>
         </form>
+        ) : null}
 
         {moduleError ? <p className="feedback error">{moduleError}</p> : null}
         {moduleNotice ? <p className="feedback success">{moduleNotice}</p> : null}
@@ -1452,11 +2135,229 @@ function ProductionModule({ token, isActive, roleName }) {
           </table>
         </div>
       </>
-      )}
+      ) : viewMode === 'recetas' ? (
+      <>
+        <div className="providers-header-row">
+          <div>
+            <h4 style={{ marginTop: 0 }}>Etapas requeridas por producto</h4>
+            <p style={{ margin: 0 }}>
+              Define que etapas debe cumplir cada producto terminado, y en que orden, antes de poder finalizarlo.
+            </p>
+          </div>
+        </div>
+
+        <div className="provider-form-grid" style={{ marginTop: 12 }}>
+          <label>
+            Producto terminado *
+            <select value={requirementsProductId} onChange={handleRequirementsProductChange}>
+              <option value="">Selecciona producto terminado</option>
+              {finishedProducts.map((product) => (
+                <option key={product.id_producto} value={product.id_producto}>
+                  {product.nombre || `Producto #${product.id_producto}`}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {requirementsError ? <p className="feedback error">{requirementsError}</p> : null}
+        {requirementsNotice ? <p className="feedback success">{requirementsNotice}</p> : null}
+
+        {requirementsProductId && isLoadingRequirements ? <p>Cargando receta...</p> : null}
+
+        {requirementsProductId && !isLoadingRequirements ? (
+          <>
+            <div className="maturation-section-divider" aria-hidden="true" />
+
+            <h4>Secuencia de etapas</h4>
+            {requirementsDraft.length === 0 ? (
+              <p className="widget-muted">Este producto aun no tiene etapas requeridas definidas.</p>
+            ) : (
+              <div className="providers-table-wrap table-limited">
+                <table className="providers-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Etapa</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {requirementsDraft.map((item, index) => (
+                      <tr key={`${item.id_tipo_etapa}-${index}`}>
+                        <td>{index + 1}</td>
+                        <td>{item.nombre_etapa}</td>
+                        <td className="table-actions">
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => handleMoveRequirementStage(index, -1)}
+                            disabled={index === 0}
+                          >
+                            Subir
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => handleMoveRequirementStage(index, 1)}
+                            disabled={index === requirementsDraft.length - 1}
+                          >
+                            Bajar
+                          </button>
+                          <button
+                            type="button"
+                            className="danger-button"
+                            onClick={() => handleRemoveRequirementStage(index)}
+                          >
+                            Quitar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="provider-form-actions" style={{ marginTop: 12 }}>
+              <select
+                className="provider-form-input"
+                aria-label="Etapa a agregar a la secuencia"
+                value={requirementsNewStageId}
+                onChange={(event) => setRequirementsNewStageId(event.target.value)}
+              >
+                <option value="">Selecciona una etapa para agregar</option>
+                {availableStageTypesForRequirement.map((stageType) => (
+                  <option key={stageType.id_tipo_etapa} value={stageType.id_tipo_etapa}>
+                    {stageType.nombre_etapa}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={handleAddRequirementStage}
+                disabled={!requirementsNewStageId}
+              >
+                + Agregar a la secuencia
+              </button>
+            </div>
+
+            <div className="provider-form-actions" style={{ marginTop: 12 }}>
+              <button type="button" onClick={handleSaveRequirements} disabled={isSavingRequirements}>
+                {isSavingRequirements ? 'Guardando...' : 'Guardar receta'}
+              </button>
+            </div>
+          </>
+        ) : null}
+      </>
+      ) : viewMode === 'productividad' ? (
+      <>
+        <div className="providers-header-row">
+          <div>
+            <h4 style={{ marginTop: 0 }}>Productividad por persona y turno</h4>
+            <p style={{ margin: 0 }}>
+              Kilogramos producidos por hora-persona en procesos finalizados, a partir de las personas y el
+              tiempo registrados en cada etapa.
+            </p>
+          </div>
+        </div>
+
+        <div className="maturation-tab-strip" role="tablist" aria-label="Agrupacion del reporte de productividad" style={{ marginTop: 12 }}>
+          {PRODUCTIVITY_GROUPINGS.map((grouping) => (
+            <button
+              key={grouping.key}
+              type="button"
+              role="tab"
+              aria-selected={productivityGrouping === grouping.key}
+              className={`secondary-button maturation-tab-button ${productivityGrouping === grouping.key ? 'is-active' : ''}`}
+              onClick={() => setProductivityGrouping(grouping.key)}
+            >
+              {grouping.label}
+            </button>
+          ))}
+        </div>
+
+        {productivityError ? <p className="feedback error">{productivityError}</p> : null}
+
+        {isLoadingProductivity ? (
+          <p className="widget-muted">Cargando reporte de productividad...</p>
+        ) : !hasLoadedProductivity || productivityReport.length === 0 ? (
+          <p className="widget-muted">
+            Aun no hay procesos finalizados con etapas cerradas (con personas y fecha de fin) para calcular
+            productividad.
+          </p>
+        ) : (
+          <>
+            <div style={{ width: '100%', height: 300, marginTop: 12 }}>
+              <ResponsiveContainer>
+                <BarChart data={productivityChartData} margin={{ top: 22, right: 8, left: 0, bottom: 56 }}>
+                  <CartesianGrid vertical={false} stroke="#d8e5d3" />
+                  <XAxis
+                    dataKey="etiqueta"
+                    tick={{ fontSize: 11, fill: '#4b5f45' }}
+                    interval={0}
+                    angle={-25}
+                    textAnchor="end"
+                    height={56}
+                  />
+                  <YAxis tick={{ fontSize: 11, fill: '#4b5f45' }} width={50} />
+                  <Tooltip
+                    formatter={(value) => [`${formatNumber(value)} kg/hora-persona`, 'Productividad']}
+                    contentStyle={{ borderRadius: 8, borderColor: '#bdd9a8', fontSize: 12 }}
+                    cursor={{ fill: '#f4f9ef' }}
+                  />
+                  <Bar dataKey="kgPorHoraPersona" fill={PRODUCTIVITY_CHART_COLOR} radius={[4, 4, 0, 0]} maxBarSize={36}>
+                    <LabelList
+                      dataKey="kgPorHoraPersona"
+                      position="top"
+                      formatter={formatNumber}
+                      style={{ fontSize: 11, fill: PRODUCTIVITY_CHART_COLOR }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="providers-table-wrap table-limited" style={{ marginTop: 12 }}>
+              <table className="providers-table">
+                <thead>
+                  <tr>
+                    {productivityGrouping !== 'producto' ? <th>Periodo</th> : null}
+                    <th>Producto</th>
+                    <th>Procesos</th>
+                    <th>Kg producidos</th>
+                    <th>Horas-persona</th>
+                    <th>Kg / hora-persona</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productivityReport.map((row, index) => (
+                    <tr key={`${row.periodo || 'total'}-${row.id_producto}-${index}`}>
+                      {productivityGrouping !== 'producto' ? <td>{row.periodo || '-'}</td> : null}
+                      <td>{row.producto_nombre}</td>
+                      <td>{row.total_procesos}</td>
+                      <td>{formatNumber(row.total_kg_producido)}</td>
+                      <td>{formatNumber(row.total_horas_persona)}</td>
+                      <td>{formatNumber(row.kg_por_hora_persona)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </>
+      ) : null}
+      </>
+      ) : null}
 
       {detailModalOpen && selectedProcess ? (
-        <div className="modal-backdrop">
-          <div className="modal-card entry-modal-card">
+        <div className="inline-detail-view">
+            <button type="button" className="secondary-button" onClick={closeDetail} style={{ marginBottom: 12 }}>
+              ‹ Volver a procesos
+            </button>
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
               <div>
                 <h4 style={{ marginBottom: 4 }}>Proceso #{selectedProcess.id_proceso}</h4>
@@ -1474,9 +2375,6 @@ function ProductionModule({ token, isActive, roleName }) {
                     Descargar etiqueta
                   </button>
                 ) : null}
-                <button type="button" className="secondary-button" onClick={closeDetail}>
-                  Cerrar
-                </button>
               </div>
             </div>
 
@@ -1484,7 +2382,7 @@ function ProductionModule({ token, isActive, roleName }) {
             {detailNotice ? <p className="feedback success">{detailNotice}</p> : null}
 
             {!isProcessFinished ? (
-              <div className="provider-form-actions" style={{ marginTop: '12px' }}>
+              <div className="provider-form-actions detail-action-toolbar" style={{ marginTop: '12px' }}>
                 <button type="button" onClick={() => openAction('stage')}>
                   Agregar etapa
                 </button>
@@ -1509,6 +2407,26 @@ function ProductionModule({ token, isActive, roleName }) {
                 {formatNumber(selectedProcess.rendimiento_porcentaje)}% de rendimiento).
               </p>
             )}
+
+            {detailRequiredStages.length > 0 ? (
+              <>
+                <div className="maturation-section-divider" aria-hidden="true" />
+                <h4>Etapas requeridas para este producto</h4>
+                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                  {detailRequiredStages.map((requirement) => {
+                    const isDone = (selectedProcess.etapas || []).some(
+                      (stage) => stage.id_tipo_etapa === requirement.id_tipo_etapa
+                    )
+
+                    return (
+                      <li key={requirement.id_tipo_etapa}>
+                        {isDone ? '✓' : '○'} {requirement.nombre_etapa}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </>
+            ) : null}
 
             <div className="maturation-section-divider" aria-hidden="true" />
 
@@ -1538,7 +2456,18 @@ function ProductionModule({ token, isActive, roleName }) {
                   ) : null}
                   {(selectedProcess.etapas || []).map((stage) => (
                     <tr key={stage.id_etapa}>
-                      <td>{stage.nombre_etapa}</td>
+                      <td>
+                        {stage.nombre_etapa}
+                        {stage.cajas && stage.cajas.length > 0 ? (
+                          <>
+                            <br />
+                            <small>
+                              {stage.cajas.length} caja{stage.cajas.length === 1 ? '' : 's'} ·{' '}
+                              {stage.cajas.reduce((sum, caja) => sum + (Number(caja.cantidad_redes) || 0), 0)} redes
+                            </small>
+                          </>
+                        ) : null}
+                      </td>
                       <td>{stage.cantidad_personas ?? '-'}</td>
                       <td>{stage.personal_asignado || '-'}</td>
                       <td>{formatNumber(stage.cantidad_entrada_kg)}</td>
@@ -1665,7 +2594,6 @@ function ProductionModule({ token, isActive, roleName }) {
                 </tbody>
               </table>
             </div>
-          </div>
         </div>
       ) : null}
 
@@ -1690,16 +2618,57 @@ function ProductionModule({ token, isActive, roleName }) {
                   Etapa *
                   <select name="id_tipo_etapa" value={stageForm.id_tipo_etapa} onChange={handleStageFieldChange} required>
                     <option value="">Selecciona tipo de etapa</option>
-                    {stageTypes.map((stageType) => (
+                    {stageTypesForCurrentProcess.map((stageType) => (
                       <option key={stageType.id_tipo_etapa} value={stageType.id_tipo_etapa}>
                         {stageType.nombre_etapa}
                       </option>
                     ))}
                   </select>
-                  {stageTypes.length === 0 ? <small>Aun no hay tipos de etapa registrados.</small> : null}
-                  <button type="button" className="secondary-button" style={{ marginTop: 6 }} onClick={openStageTypeModal}>
-                    + Nuevo tipo de etapa
-                  </button>
+                  {stageTypesForCurrentProcess.length === 0 ? (
+                    <small>Aun no hay tipos de etapa disponibles{requiredStageTypeIds.size > 0 ? ' en el plan de este producto' : ''}.</small>
+                  ) : null}
+                  {requiredStageTypeIds.size > 0 ? null : !stageTypeModalOpen ? (
+                    <button type="button" className="secondary-button" style={{ marginTop: 6 }} onClick={openStageTypeModal}>
+                      + Nuevo tipo de etapa
+                    </button>
+                  ) : (
+                    <div className="maturation-filter-panel" style={{ marginTop: 8 }}>
+                      <p style={{ marginTop: 0, marginBottom: 8, fontWeight: 600 }}>Nuevo tipo de etapa</p>
+                      <div className="provider-form-grid">
+                        <label>
+                          Nombre *
+                          <input
+                            name="nombre_etapa"
+                            type="text"
+                            maxLength={60}
+                            value={stageTypeForm.nombre_etapa}
+                            onChange={handleStageTypeFieldChange}
+                            placeholder="Ej. Coccion"
+                            required
+                          />
+                        </label>
+                        <label>
+                          Descripcion
+                          <input
+                            name="descripcion"
+                            type="text"
+                            maxLength={150}
+                            value={stageTypeForm.descripcion}
+                            onChange={handleStageTypeFieldChange}
+                            placeholder="Opcional"
+                          />
+                        </label>
+                      </div>
+                      <div className="provider-form-actions">
+                        <button type="button" onClick={handleStageTypeSubmit} disabled={isSubmittingStageType}>
+                          {isSubmittingStageType ? 'Guardando...' : 'Guardar tipo de etapa'}
+                        </button>
+                        <button type="button" className="secondary-button" onClick={closeStageTypeModal}>
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </label>
 
                 <label>
@@ -1813,16 +2782,57 @@ function ProductionModule({ token, isActive, roleName }) {
                     required
                   >
                     <option value="">Selecciona tipo de etapa</option>
-                    {stageTypes.map((stageType) => (
+                    {stageTypesForCurrentProcess.map((stageType) => (
                       <option key={stageType.id_tipo_etapa} value={stageType.id_tipo_etapa}>
                         {stageType.nombre_etapa}
                       </option>
                     ))}
                   </select>
-                  {stageTypes.length === 0 ? <small>Aun no hay tipos de etapa registrados.</small> : null}
-                  <button type="button" className="secondary-button" style={{ marginTop: 6 }} onClick={openStageTypeModal}>
-                    + Nuevo tipo de etapa
-                  </button>
+                  {stageTypesForCurrentProcess.length === 0 ? (
+                    <small>Aun no hay tipos de etapa disponibles{requiredStageTypeIds.size > 0 ? ' en el plan de este producto' : ''}.</small>
+                  ) : null}
+                  {requiredStageTypeIds.size > 0 ? null : !stageTypeModalOpen ? (
+                    <button type="button" className="secondary-button" style={{ marginTop: 6 }} onClick={openStageTypeModal}>
+                      + Nuevo tipo de etapa
+                    </button>
+                  ) : (
+                    <div className="maturation-filter-panel" style={{ marginTop: 8 }}>
+                      <p style={{ marginTop: 0, marginBottom: 8, fontWeight: 600 }}>Nuevo tipo de etapa</p>
+                      <div className="provider-form-grid">
+                        <label>
+                          Nombre *
+                          <input
+                            name="nombre_etapa"
+                            type="text"
+                            maxLength={60}
+                            value={stageTypeForm.nombre_etapa}
+                            onChange={handleStageTypeFieldChange}
+                            placeholder="Ej. Coccion"
+                            required
+                          />
+                        </label>
+                        <label>
+                          Descripcion
+                          <input
+                            name="descripcion"
+                            type="text"
+                            maxLength={150}
+                            value={stageTypeForm.descripcion}
+                            onChange={handleStageTypeFieldChange}
+                            placeholder="Opcional"
+                          />
+                        </label>
+                      </div>
+                      <div className="provider-form-actions">
+                        <button type="button" onClick={handleStageTypeSubmit} disabled={isSubmittingStageType}>
+                          {isSubmittingStageType ? 'Guardando...' : 'Guardar tipo de etapa'}
+                        </button>
+                        <button type="button" className="secondary-button" onClick={closeStageTypeModal}>
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </label>
 
                 <label>
@@ -1961,9 +2971,48 @@ function ProductionModule({ token, isActive, roleName }) {
                   {mermaTypes.length === 0 ? (
                     <small>Aun no hay categorias de merma registradas.</small>
                   ) : null}
-                  <button type="button" className="secondary-button" style={{ marginTop: 6 }} onClick={openMermaTypeModal}>
-                    + Nueva categoria
-                  </button>
+                  {!mermaTypeModalOpen ? (
+                    <button type="button" className="secondary-button" style={{ marginTop: 6 }} onClick={openMermaTypeModal}>
+                      + Nueva categoria
+                    </button>
+                  ) : (
+                    <div className="maturation-filter-panel" style={{ marginTop: 8 }}>
+                      <p style={{ marginTop: 0, marginBottom: 8, fontWeight: 600 }}>Nueva categoria de merma</p>
+                      <div className="provider-form-grid">
+                        <label>
+                          Nombre *
+                          <input
+                            name="nombre_merma"
+                            type="text"
+                            maxLength={50}
+                            value={mermaTypeForm.nombre_merma}
+                            onChange={handleMermaTypeFieldChange}
+                            placeholder="Ej. Merma por corte"
+                            required
+                          />
+                        </label>
+                        <label>
+                          Descripcion
+                          <input
+                            name="descripcion"
+                            type="text"
+                            maxLength={150}
+                            value={mermaTypeForm.descripcion}
+                            onChange={handleMermaTypeFieldChange}
+                            placeholder="Opcional"
+                          />
+                        </label>
+                      </div>
+                      <div className="provider-form-actions">
+                        <button type="button" onClick={handleMermaTypeSubmit} disabled={isSubmittingMermaType}>
+                          {isSubmittingMermaType ? 'Guardando...' : 'Guardar categoria'}
+                        </button>
+                        <button type="button" className="secondary-button" onClick={closeMermaTypeModal}>
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </label>
 
                 <label>
@@ -2007,106 +3056,6 @@ function ProductionModule({ token, isActive, roleName }) {
               <div className="provider-form-actions">
                 <button type="submit" disabled={isSubmittingDetail}>
                   {isSubmittingDetail ? 'Guardando...' : 'Registrar merma'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
-
-      {mermaTypeModalOpen ? (
-        <div className="modal-backdrop">
-          <div className="modal-card" style={{ width: 'min(480px, 100%)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <h4 style={{ marginBottom: 4 }}>Nueva categoria de merma</h4>
-              <button type="button" className="secondary-button" onClick={closeMermaTypeModal}>
-                Cerrar
-              </button>
-            </div>
-
-            {detailError ? <p className="feedback error">{detailError}</p> : null}
-
-            <form className="provider-form" onSubmit={handleMermaTypeSubmit} style={{ marginTop: '16px' }}>
-              <div className="provider-form-grid">
-                <label>
-                  Nombre *
-                  <input
-                    name="nombre_merma"
-                    type="text"
-                    maxLength={50}
-                    value={mermaTypeForm.nombre_merma}
-                    onChange={handleMermaTypeFieldChange}
-                    placeholder="Ej. Merma por corte"
-                    required
-                  />
-                </label>
-
-                <label>
-                  Descripcion
-                  <input
-                    name="descripcion"
-                    type="text"
-                    maxLength={150}
-                    value={mermaTypeForm.descripcion}
-                    onChange={handleMermaTypeFieldChange}
-                    placeholder="Opcional"
-                  />
-                </label>
-              </div>
-
-              <div className="provider-form-actions">
-                <button type="submit" disabled={isSubmittingMermaType}>
-                  {isSubmittingMermaType ? 'Guardando...' : 'Registrar categoria'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
-
-      {stageTypeModalOpen ? (
-        <div className="modal-backdrop">
-          <div className="modal-card" style={{ width: 'min(480px, 100%)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <h4 style={{ marginBottom: 4 }}>Nuevo tipo de etapa</h4>
-              <button type="button" className="secondary-button" onClick={closeStageTypeModal}>
-                Cerrar
-              </button>
-            </div>
-
-            {detailError ? <p className="feedback error">{detailError}</p> : null}
-
-            <form className="provider-form" onSubmit={handleStageTypeSubmit} style={{ marginTop: '16px' }}>
-              <div className="provider-form-grid">
-                <label>
-                  Nombre *
-                  <input
-                    name="nombre_etapa"
-                    type="text"
-                    maxLength={60}
-                    value={stageTypeForm.nombre_etapa}
-                    onChange={handleStageTypeFieldChange}
-                    placeholder="Ej. Coccion"
-                    required
-                  />
-                </label>
-
-                <label>
-                  Descripcion
-                  <input
-                    name="descripcion"
-                    type="text"
-                    maxLength={150}
-                    value={stageTypeForm.descripcion}
-                    onChange={handleStageTypeFieldChange}
-                    placeholder="Opcional"
-                  />
-                </label>
-              </div>
-
-              <div className="provider-form-actions">
-                <button type="submit" disabled={isSubmittingStageType}>
-                  {isSubmittingStageType ? 'Guardando...' : 'Registrar tipo de etapa'}
                 </button>
               </div>
             </form>

@@ -20,6 +20,7 @@ function ProvidersModule({ token, isActive }) {
   const [providers, setProviders] = useState([])
   const [providerForm, setProviderForm] = useState(EMPTY_PROVIDER_FORM)
   const [editingProviderId, setEditingProviderId] = useState(null)
+  const [formOpen, setFormOpen] = useState(false)
   const [isProvidersLoading, setIsProvidersLoading] = useState(false)
   const [isProviderSubmitting, setIsProviderSubmitting] = useState(false)
   const [providersError, setProvidersError] = useState('')
@@ -75,6 +76,7 @@ function ProvidersModule({ token, isActive }) {
 
       setProviderForm(EMPTY_PROVIDER_FORM)
       setEditingProviderId(null)
+      setFormOpen(false)
       await loadProviders()
     } catch (error) {
       const message = error.message || 'No se pudo guardar proveedor'
@@ -83,6 +85,13 @@ function ProvidersModule({ token, isActive }) {
     } finally {
       setIsProviderSubmitting(false)
     }
+  }
+
+  const openCreateForm = () => {
+    setProviderForm(EMPTY_PROVIDER_FORM)
+    setProvidersNotice('')
+    setProvidersError('')
+    setFormOpen(true)
   }
 
   const handleProviderEdit = (provider) => {
@@ -95,12 +104,14 @@ function ProvidersModule({ token, isActive }) {
     })
     setProvidersNotice('')
     setProvidersError('')
+    setFormOpen(true)
   }
 
   const cancelProviderEdit = () => {
     setEditingProviderId(null)
     setProviderForm(EMPTY_PROVIDER_FORM)
     setProvidersNotice('')
+    setFormOpen(false)
   }
 
   const handleProviderDelete = async (providerId) => {
@@ -139,8 +150,14 @@ function ProvidersModule({ token, isActive }) {
           <h3>Modulo Proveedores</h3>
           <p>Gestion de altas, ediciones, consultas y eliminaciones.</p>
         </div>
+        {!formOpen ? (
+          <button type="button" className="primary-button" onClick={openCreateForm}>
+            + Agregar proveedor
+          </button>
+        ) : null}
       </div>
 
+      {formOpen ? (
       <form className="provider-form" onSubmit={handleProviderSubmit}>
         <div className="provider-form-grid">
           <label>
@@ -200,18 +217,17 @@ function ProvidersModule({ token, isActive }) {
                 : 'Crear proveedor'}
           </button>
 
-          {editingProviderId ? (
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={cancelProviderEdit}
-              disabled={isProviderSubmitting}
-            >
-              Cancelar edicion
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={cancelProviderEdit}
+            disabled={isProviderSubmitting}
+          >
+            {editingProviderId ? 'Cancelar edicion' : 'Cancelar'}
+          </button>
         </div>
       </form>
+      ) : null}
 
       {providersError ? <p className="feedback error">{providersError}</p> : null}
       {providersNotice ? <p className="feedback success">{providersNotice}</p> : null}

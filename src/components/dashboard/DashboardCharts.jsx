@@ -17,7 +17,11 @@ import {
   getMermasPorCategoriaReportRequest,
   getProduccionPorProductoReportRequest,
 } from '../../services/production.service'
-import { getPedidosDelDiaReportRequest } from '../../services/order.service'
+import {
+  getComprasPorClienteReportRequest,
+  getComprasPorProductoReportRequest,
+  getPedidosDelDiaReportRequest,
+} from '../../services/order.service'
 import { listInventoryRequest } from '../../services/inventory.service'
 import CollapsibleSection from './CollapsibleSection'
 
@@ -84,6 +88,17 @@ const formatNumber = (value) => {
   }
 
   return new Intl.NumberFormat('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value))
+}
+
+const getCurrentMonthRange = () => {
+  const now = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const year = now.getFullYear()
+  const month = now.getMonth()
+  const desde = `${year}-${pad(month + 1)}-01`
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  const hasta = `${year}-${pad(month + 1)}-${pad(lastDay)}`
+  return { desde, hasta }
 }
 
 function ChartCard({ title, subtitle, data, nameKey, nameLabel, valueKey, valueLabel, unitAccessor, emptyMessage }) {
@@ -247,6 +262,8 @@ function DashboardCharts({ token, showProductionCharts = true, showOrderCharts =
   const [pedidosDelDia, setPedidosDelDia] = useState([])
   const [pedidosDelDiaFecha, setPedidosDelDiaFecha] = useState(null)
   const [existenciasPorProducto, setExistenciasPorProducto] = useState([])
+  const [comprasPorCliente, setComprasPorCliente] = useState([])
+  const [comprasPorProducto, setComprasPorProducto] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -280,6 +297,8 @@ function DashboardCharts({ token, showProductionCharts = true, showOrderCharts =
         }
 
         if (showOrderCharts) {
+          const { desde, hasta } = getCurrentMonthRange()
+
           requests.push(
             getPedidosDelDiaReportRequest({}, token).then((report) => {
               if (isCancelled) {
@@ -292,6 +311,26 @@ function DashboardCharts({ token, showProductionCharts = true, showOrderCharts =
                 { estado: 'Entregados', pedidos: Number(report?.entregados) || 0 },
                 { estado: 'Con devolucion', pedidos: Number(report?.con_devolucion) || 0 },
               ])
+            }),
+            getComprasPorClienteReportRequest({ desde, hasta }, token).then((rows) => {
+              if (!isCancelled) {
+                setComprasPorCliente(
+                  (Array.isArray(rows) ? rows : []).map((row) => ({
+                    nombre: row.nombre_comercial || `Cliente #${row.id_cliente}`,
+                    total: Number(row.total_compras) || 0,
+                  }))
+                )
+              }
+            }),
+            getComprasPorProductoReportRequest({ desde, hasta }, token).then((rows) => {
+              if (!isCancelled) {
+                setComprasPorProducto(
+                  (Array.isArray(rows) ? rows : []).map((row) => ({
+                    nombre: row.producto_nombre || `Producto #${row.id_producto}`,
+                    total: Number(row.total_compras) || 0,
+                  }))
+                )
+              }
             })
           )
         }
@@ -392,6 +431,32 @@ function DashboardCharts({ token, showProductionCharts = true, showOrderCharts =
             valueKey="pedidos"
             valueLabel="Pedidos"
             emptyMessage="Aun no hay pedidos registrados hoy."
+          />
+        ) : null}
+
+        {showOrderCharts ? (
+          <ChartCard
+            title="Compras del mes por cliente"
+            subtitle="Cantidad x precio congelado al crear cada pedido, mes en curso"
+            data={comprasPorCliente}
+            nameKey="nombre"
+            nameLabel="Cliente"
+            valueKey="total"
+            valueLabel="Total compras (Q)"
+            emptyMessage="Aun no hay compras registradas este mes."
+          />
+        ) : null}
+
+        {showOrderCharts ? (
+          <ChartCard
+            title="Compras del mes por producto"
+            subtitle="Cantidad x precio congelado al crear cada pedido, mes en curso"
+            data={comprasPorProducto}
+            nameKey="nombre"
+            nameLabel="Producto"
+            valueKey="total"
+            valueLabel="Total compras (Q)"
+            emptyMessage="Aun no hay compras registradas este mes."
           />
         ) : null}
 

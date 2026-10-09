@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { authFile } from './test-users.js'
-import { createMateriaPrimaEntry, acceptPendingLot, findSublotIdInTab, successMessage } from './helpers.js'
+import { createMateriaPrimaEntry, acceptPendingLot, findSublotIdInTab, goToModule, successMessage } from './helpers.js'
 
 test.describe('Modulo Produccion', () => {
   test.use({ storageState: authFile('Administrador') })
@@ -14,10 +14,11 @@ test.describe('Modulo Produccion', () => {
     const loteId = await acceptPendingLot(page, entryId, 'Maduro')
     const subloteId = await findSublotIdInTab(page, loteId, /Listos para produccion/)
 
-    await page.getByRole('button', { name: 'Produccion', exact: true }).click()
+    await goToModule(page, 'Produccion')
 
+    await page.getByRole('button', { name: '+ Iniciar proceso' }).click()
     await page.getByLabel('Sub-lote listo para produccion *').selectOption({ value: subloteId })
-    await page.getByLabel('Producto resultado *').selectOption({ label: 'Tostones Congelados Bolsa 2 LBS' })
+    await page.getByLabel('Producto resultado *').selectOption({ label: 'Pure de Platano Congelado 1 LB' })
     await page.getByRole('button', { name: 'Iniciar proceso' }).click()
     await expect(successMessage(page, 'Proceso de produccion iniciado correctamente')).toBeVisible()
 
@@ -70,21 +71,24 @@ test.describe('Modulo Produccion', () => {
     await page.getByPlaceholder('#proceso o #lote').fill(subloteId)
     const finishedRow = page.locator('table.providers-table tbody tr').filter({ hasText: `#${subloteId}` })
     await expect(finishedRow).toHaveCount(1)
-    await expect(finishedRow).toContainText('Tostones Congelados Bolsa 2 LBS')
+    await expect(finishedRow).toContainText('Pure de Platano Congelado 1 LB')
     await expect(finishedRow).toContainText('Finalizado')
   })
 
   test('crea y cancela una orden de produccion', async ({ page }) => {
     // Las ordenes nunca se borran (solo se cancelan), asi que una cantidad fija como "12.34"
-    // podria coincidir con una orden ya cancelada de una corrida anterior. Se usa una cantidad
-    // derivada del timestamp (menor a 1000 para que Intl no le agregue separador de miles) para
-    // que la fila sea identificable de forma unica de principio a fin.
-    const cantidadSolicitada = Number(String(Date.now()).slice(-3)).toFixed(2)
+    // podria coincidir con una orden ya cancelada de una corrida anterior. Un valor derivado solo
+    // de Date.now() % 1000 colisiona demasiado seguido en una sesion larga con muchas corridas
+    // (el modulo se repite cada ~16.7 min), asi que se usa un valor aleatorio continuo (menor a
+    // 1000 para que Intl no le agregue separador de miles) para que la fila sea identificable de
+    // forma unica de principio a fin.
+    const cantidadSolicitada = (1 + Math.random() * 900).toFixed(2)
 
     await page.goto('/')
-    await page.getByRole('button', { name: 'Produccion', exact: true }).click()
+    await goToModule(page, 'Produccion')
     await page.getByRole('tab', { name: 'Ordenes de produccion' }).click()
 
+    await page.getByRole('button', { name: '+ Nueva orden' }).click()
     await page.getByLabel('Producto terminado *').selectOption({ label: 'Chips de Platano Bolsa 4 OZ' })
     await page.getByLabel('Cantidad solicitada (kg) *').fill(cantidadSolicitada)
     await page.getByRole('button', { name: 'Crear orden' }).click()

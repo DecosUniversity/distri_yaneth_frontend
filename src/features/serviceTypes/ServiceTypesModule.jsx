@@ -25,6 +25,7 @@ function ServiceTypesModule({ token, isActive }) {
   const [serviceTypes, setServiceTypes] = useState([])
   const [serviceTypeForm, setServiceTypeForm] = useState(EMPTY_SERVICE_TYPE_FORM)
   const [editingServiceTypeId, setEditingServiceTypeId] = useState(null)
+  const [formOpen, setFormOpen] = useState(false)
   const [isServiceTypesLoading, setIsServiceTypesLoading] = useState(false)
   const [isServiceTypeSubmitting, setIsServiceTypeSubmitting] = useState(false)
   const [serviceTypesError, setServiceTypesError] = useState('')
@@ -83,6 +84,7 @@ function ServiceTypesModule({ token, isActive }) {
 
       setServiceTypeForm(EMPTY_SERVICE_TYPE_FORM)
       setEditingServiceTypeId(null)
+      setFormOpen(false)
       await loadServiceTypes()
     } catch (error) {
       const message = error.message || 'No se pudo guardar tipo de servicio'
@@ -91,6 +93,13 @@ function ServiceTypesModule({ token, isActive }) {
     } finally {
       setIsServiceTypeSubmitting(false)
     }
+  }
+
+  const openCreateForm = () => {
+    setServiceTypeForm(EMPTY_SERVICE_TYPE_FORM)
+    setServiceTypesNotice('')
+    setServiceTypesError('')
+    setFormOpen(true)
   }
 
   const handleEdit = (serviceType) => {
@@ -105,12 +114,14 @@ function ServiceTypesModule({ token, isActive }) {
     })
     setServiceTypesNotice('')
     setServiceTypesError('')
+    setFormOpen(true)
   }
 
   const cancelEdit = () => {
     setEditingServiceTypeId(null)
     setServiceTypeForm(EMPTY_SERVICE_TYPE_FORM)
     setServiceTypesNotice('')
+    setFormOpen(false)
   }
 
   const handleDelete = async (serviceTypeId) => {
@@ -149,8 +160,14 @@ function ServiceTypesModule({ token, isActive }) {
           <h3>Tipos de Servicio</h3>
           <p>Catalogo base para clasificar servicios de mantenimiento.</p>
         </div>
+        {!formOpen ? (
+          <button type="button" className="primary-button" onClick={openCreateForm}>
+            + Agregar tipo
+          </button>
+        ) : null}
       </div>
 
+      {formOpen ? (
       <form className="provider-form" onSubmit={handleSubmit}>
         <div className="provider-form-grid">
           <label>
@@ -199,18 +216,17 @@ function ServiceTypesModule({ token, isActive }) {
                 : 'Crear tipo'}
           </button>
 
-          {editingServiceTypeId ? (
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={cancelEdit}
-              disabled={isServiceTypeSubmitting}
-            >
-              Cancelar edicion
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={cancelEdit}
+            disabled={isServiceTypeSubmitting}
+          >
+            {editingServiceTypeId ? 'Cancelar edicion' : 'Cancelar'}
+          </button>
         </div>
       </form>
+      ) : null}
 
       {serviceTypesError ? <p className="feedback error">{serviceTypesError}</p> : null}
       {serviceTypesNotice ? <p className="feedback success">{serviceTypesNotice}</p> : null}

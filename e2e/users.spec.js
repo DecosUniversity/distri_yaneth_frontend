@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { authFile } from './test-users.js'
-import { successMessage } from './helpers.js'
+import { goToModule, successMessage } from './helpers.js'
 
 test.describe('Modulo Usuarios - CRUD', () => {
   test.use({ storageState: authFile('Administrador') })
@@ -18,8 +18,9 @@ test.describe('Modulo Usuarios - CRUD', () => {
     const username = `e2e.temp.${Date.now().toString(36)}`
 
     await page.goto('/')
-    await page.getByRole('button', { name: 'Usuarios', exact: true }).click()
+    await goToModule(page, 'Usuarios')
 
+    await page.getByRole('button', { name: '+ Agregar usuario' }).click()
     await page.getByLabel('Nombre completo *').fill('E2E Usuario Temporal')
     await page.getByLabel('Username *').fill(username)
     await page.getByLabel('Password inicial *').fill('ClaveInicial123')

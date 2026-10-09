@@ -32,6 +32,32 @@ const formatNumber = (value) => {
 const formatDateTime = (value) => (value ? new Date(value).toLocaleString('es-GT') : '-')
 const formatDateOnly = (value) => (value ? new Date(value).toLocaleDateString('es-GT') : '-')
 
+const formatCurrency = (value) => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return '-'
+  }
+
+  return new Intl.NumberFormat('es-GT', { style: 'currency', currency: 'GTQ' }).format(Number(value))
+}
+
+// "Lineas" es cuantos productos distintos tiene el pedido, no la suma de unidades (cada
+// producto puede tener su propia unidad de medida, asi que sumarlas mezcladas no tendria
+// sentido). Se muestra como texto explicito para no confundirlo con una cantidad de unidades.
+const formatProductosSummary = (lineas) => {
+  const count = (lineas || []).length
+  return `${count} producto${count === 1 ? '' : 's'}`
+}
+
+// Valor del pedido = cantidad x precio_unitario congelado al momento de crear cada linea.
+// No es un monto facturado (este modulo es explicitamente "sin facturacion"), pero tampoco
+// es una estimacion: una vez creado el pedido, ese precio ya no cambia. Pedidos antiguos
+// (creados antes de que existiera esta columna) no tienen precio_unitario; en ese caso la
+// linea no aporta valor (se trata como 0, ver formatValorLinea para el '-' visible).
+const tieneValorCongelado = (linea) => linea.precio_unitario !== null && linea.precio_unitario !== undefined
+const calcularValorLinea = (linea) => Number(linea.cantidad || 0) * Number(linea.precio_unitario || 0)
+const calcularValorPedido = (lineas) =>
+  (lineas || []).reduce((total, linea) => total + (tieneValorCongelado(linea) ? calcularValorLinea(linea) : 0), 0)
+
 const toDateInputValue = (date) => {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -571,7 +597,8 @@ function OrdersModule({ token, isActive }) {
                   <th>Pedido</th>
                   <th>Cliente</th>
                   <th>Estado</th>
-                  <th>Lineas</th>
+                  <th>Productos</th>
+                  <th>Valor</th>
                   <th>Ruta</th>
                   <th>Fecha</th>
                   <th>Entrega programada</th>
@@ -581,7 +608,7 @@ function OrdersModule({ token, isActive }) {
               <tbody>
                 {visibleOrders.length === 0 && !isLoading ? (
                   <tr>
-                    <td colSpan="8" className="empty-table-cell">
+                    <td colSpan="9" className="empty-table-cell">
                       {viewMode === 'gestion' ? 'No hay pedidos activos.' : 'No hay pedidos registrados.'}
                     </td>
                   </tr>
@@ -592,7 +619,8 @@ function OrdersModule({ token, isActive }) {
                     <td>#{order.id_pedido}</td>
                     <td>{order.nombre_comercial || `Cliente #${order.id_cliente}`}</td>
                     <td>{order.estado}</td>
-                    <td>{(order.lineas || []).length}</td>
+                    <td>{formatProductosSummary(order.lineas)}</td>
+                    <td>{formatCurrency(calcularValorPedido(order.lineas))}</td>
                     <td>{order.id_ruta_actual ? `#${order.id_ruta_actual} (${order.ruta_estado})` : '-'}</td>
                     <td>{formatDateTime(order.fecha_creacion)}</td>
                     <td>{formatDateOnly(order.fecha_entrega_programada)}</td>
@@ -644,7 +672,7 @@ function OrdersModule({ token, isActive }) {
                 </label>
 
                 <label>
-                  Fecha de entrega
+                  Fecha de entrega programada
                   <input
                     name="fecha_entrega_programada"
                     type="date"
@@ -666,7 +694,7 @@ function OrdersModule({ token, isActive }) {
               </div>
 
               <div style={{ width: '100%', marginTop: 8 }}>
-                <h4>Lineas de producto</h4>
+                <h4>Seleccionar productos</h4>
                 <div className="provider-form-grid">
                   <label>
                     Producto
@@ -715,7 +743,7 @@ function OrdersModule({ token, isActive }) {
 
                 <div style={{ marginTop: 8 }}>
                   <button type="button" className="secondary-button" onClick={handleAddLine}>
-                    Añadir linea
+                    Añadir producto
                   </button>
                 </div>
 
@@ -775,26 +803,32 @@ function OrdersModule({ token, isActive }) {
             </div>
 
             <div style={{ marginTop: 12 }}>
-              <label>
-                Fecha de entrega
-                <input
-                  type="date"
-                  value={editFechaEntrega}
-                  onChange={(event) => setEditFechaEntrega(event.target.value)}
-                  disabled={ORDER_RESOLVED_STATES.has(detailOrder.estado) || isSavingFechaEntrega}
-                />
-              </label>
-              {!ORDER_RESOLVED_STATES.has(detailOrder.estado) ? (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  style={{ marginLeft: 8 }}
-                  onClick={handleSaveFechaEntrega}
-                  disabled={isSavingFechaEntrega}
-                >
-                  {isSavingFechaEntrega ? 'Guardando...' : 'Guardar fecha'}
-                </button>
-              ) : null}
+              {ORDER_RESOLVED_STATES.has(detailOrder.estado) ? (
+                <p style={{ margin: 0 }}>
+                  <strong>Fecha de entrega real:</strong> {formatDateTime(detailOrder.fecha_entrega)}
+                </p>
+              ) : (
+                <div className="provider-form-actions" style={{ flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <label style={{ display: 'grid', gap: 6, color: 'var(--green-800)', fontSize: '0.88rem', fontWeight: 700 }}>
+                    Fecha de entrega programada
+                    <input
+                      type="date"
+                      className="provider-form-input"
+                      value={editFechaEntrega}
+                      onChange={(event) => setEditFechaEntrega(event.target.value)}
+                      disabled={isSavingFechaEntrega}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={handleSaveFechaEntrega}
+                    disabled={isSavingFechaEntrega}
+                  >
+                    {isSavingFechaEntrega ? 'Guardando...' : 'Guardar fecha'}
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="providers-table-wrap table-limited" style={{ marginTop: 12 }}>
@@ -805,12 +839,13 @@ function OrdersModule({ token, isActive }) {
                     <th>Lote</th>
                     <th>Cantidad</th>
                     <th>Estado entrega</th>
+                    <th>Valor</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(detailOrder.lineas || []).length === 0 ? (
                     <tr>
-                      <td colSpan="4" className="empty-table-cell">Sin lineas registradas.</td>
+                      <td colSpan="5" className="empty-table-cell">Sin lineas registradas.</td>
                     </tr>
                   ) : null}
                   {(detailOrder.lineas || []).map((linea) => (
@@ -823,11 +858,28 @@ function OrdersModule({ token, isActive }) {
                       </td>
                       <td>{formatNumber(linea.cantidad)}</td>
                       <td>{linea.estado_entrega}</td>
+                      <td>{tieneValorCongelado(linea) ? formatCurrency(calcularValorLinea(linea)) : '-'}</td>
                     </tr>
                   ))}
+                  {(detailOrder.lineas || []).length > 0 ? (
+                    <tr>
+                      <td colSpan="4" style={{ textAlign: 'right', fontWeight: 700 }}>
+                        Valor total del pedido
+                      </td>
+                      <td style={{ fontWeight: 700 }}>
+                        {formatCurrency(calcularValorPedido(detailOrder.lineas))}
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
+            <p className="widget-muted" style={{ marginTop: 6 }}>
+              El valor de cada producto queda fijo (congelado) al precio de venta sugerido vigente en el momento en
+              que se crea el pedido, y ya no cambia aunque el precio del producto cambie despues. Este modulo no
+              factura ni registra ventas: es solo una referencia. Pedidos creados antes de esta funcionalidad
+              muestran "-" porque no tienen ese precio guardado.
+            </p>
 
             {detailOrder.observaciones ? <p style={{ marginTop: 8 }}>Observaciones: {detailOrder.observaciones}</p> : null}
           </div>

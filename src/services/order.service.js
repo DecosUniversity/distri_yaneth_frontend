@@ -108,3 +108,24 @@ export const getPedidosDelDiaReportRequest = async ({ fecha } = {}, token) => {
 
   return parseResponse(response, 'No se pudo obtener el reporte de pedidos del dia')
 }
+
+export const getComprasPorClienteReportRequest = async ({ desde, hasta } = {}, token) => {
+  const response = await fetch(`${API_BASE_URL}/api/pedidos/reportes/compras-por-cliente${buildQueryString({ desde, hasta })}`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  })
+
+  return parseResponse(response, 'No se pudo obtener el reporte de compras por cliente')
+}
+
+export const getComprasPorProductoReportRequest = async ({ desde, hasta, id_cliente } = {}, token) => {
+  const response = await fetch(
+    `${API_BASE_URL}/api/pedidos/reportes/compras-por-producto${buildQueryString({ desde, hasta, id_cliente })}`,
+    {
+      method: 'GET',
+      headers: buildHeaders(token),
+    }
+  )
+
+  return parseResponse(response, 'No se pudo obtener el reporte de compras por producto')
+}
