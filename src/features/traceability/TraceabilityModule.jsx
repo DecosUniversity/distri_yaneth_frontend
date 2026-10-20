@@ -694,6 +694,13 @@ function TraceabilityModule({ token }) {
     setTrace(null)
     setSearchResults(null)
     setSearchTerm('')
+
+    if (advancedDesde && advancedHasta && advancedDesde > advancedHasta) {
+      setAdvancedResults(null)
+      setErrorMessage('La fecha "Desde" no puede ser posterior a "Hasta"')
+      return
+    }
+
     setIsLoading(true)
 
     try {

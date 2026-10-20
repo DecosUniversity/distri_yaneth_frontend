@@ -110,17 +110,9 @@ const filterOrdersForReport = (ordersList, { desde, hasta, id_cliente }) =>
     })
     .sort((a, b) => new Date(a.fecha_creacion) - new Date(b.fecha_creacion) || a.id_pedido - b.id_pedido)
 
-const buildOrdersReportPdf = (reportOrders, { periodLabel, clientLabel }) => {
-  const doc = new jsPDF({ orientation: 'landscape' })
-  const tableStyles = { styles: { fontSize: 9, cellPadding: 2 }, headStyles: { fillColor: PDF_HEAD_COLOR } }
-
-  doc.setFontSize(14)
-  doc.text('Reporte detallado de pedidos', 14, 15)
-  doc.setFontSize(10)
-  doc.text(`Periodo: ${periodLabel}`, 14, 22)
-  doc.text(`Cliente: ${clientLabel}`, 14, 27)
-  doc.text(`Generado: ${new Date().toLocaleString('es-GT')}`, 14, 32)
-
+// Agregados del reporte (por estado, cliente y producto). Lo comparten el PDF y el Excel para
+// que ambos formatos exporten exactamente los mismos totales.
+const summarizeOrdersReport = (reportOrders) => {
   const byState = {}
   const byClient = {}
   const byProduct = {}
@@ -162,9 +154,31 @@ const buildOrdersReportPdf = (reportOrders, { periodLabel, clientLabel }) => {
     })
   })
 
+  return {
+    byState,
+    clients: Object.values(byClient).sort((a, b) => b.valor - a.valor || b.pedidos - a.pedidos),
+    products: Object.values(byProduct).sort((a, b) => b.cantidad - a.cantidad),
+    totalValue,
+    ordersWithoutPrice,
+  }
+}
+
+const buildOrdersReportPdf = (reportOrders, { periodLabel, clientLabel }) => {
+  const doc = new jsPDF({ orientation: 'landscape' })
+  const tableStyles = { styles: { fontSize: 9, cellPadding: 2 }, headStyles: { fillColor: PDF_HEAD_COLOR } }
+
+  doc.setFontSize(14)
+  doc.text('Reporte detallado de pedidos', 14, 15)
+  doc.setFontSize(10)
+  doc.text(`Periodo: ${periodLabel}`, 14, 22)
+  doc.text(`Cliente: ${clientLabel}`, 14, 27)
+  doc.text(`Generado: ${new Date().toLocaleString('es-GT')}`, 14, 32)
+
+  const { byState, clients, products, totalValue, ordersWithoutPrice } = summarizeOrdersReport(reportOrders)
+
   const summaryRows = [
     ['Total de pedidos', String(reportOrders.length)],
-    ['Clientes atendidos', String(Object.keys(byClient).length)],
+    ['Clientes atendidos', String(clients.length)],
     ['Valor total de pedidos', formatCurrency(totalValue)],
     ...Object.entries(byState).map(([estado, count]) => [`Pedidos en estado ${estado}`, String(count)]),
   ]
@@ -190,18 +204,14 @@ const buildOrdersReportPdf = (reportOrders, { periodLabel, clientLabel }) => {
   autoTable(doc, {
     startY: doc.lastAutoTable.finalY + 8,
     head: [['Cliente', 'Pedidos', 'Productos', 'Valor']],
-    body: Object.values(byClient)
-      .sort((a, b) => b.valor - a.valor || b.pedidos - a.pedidos)
-      .map((row) => [row.nombre, row.pedidos, row.lineas, formatCurrency(row.valor)]),
+    body: clients.map((row) => [row.nombre, row.pedidos, row.lineas, formatCurrency(row.valor)]),
     ...tableStyles,
   })
 
   autoTable(doc, {
     startY: doc.lastAutoTable.finalY + 8,
     head: [['Producto', 'Cantidad', 'Pedidos', 'Valor']],
-    body: Object.values(byProduct)
-      .sort((a, b) => b.cantidad - a.cantidad)
-      .map((row) => [row.nombre, `${formatNumber(row.cantidad)} ${row.unidad}`, row.pedidos.size, formatCurrency(row.valor)]),
+    body: products.map((row) => [row.nombre, `${formatNumber(row.cantidad)} ${row.unidad}`, row.pedidos.size, formatCurrency(row.valor)]),
     ...tableStyles,
   })
 
@@ -269,6 +279,137 @@ const buildOrdersReportPdf = (reportOrders, { periodLabel, clientLabel }) => {
   return doc
 }
 
+const EXCEL_CURRENCY_FORMAT = '"Q"#,##0.00'
+const EXCEL_QUANTITY_FORMAT = '#,##0.00'
+
+// Mismo contenido que el PDF, pero con cantidades y montos como numeros (no texto) para que el
+// usuario pueda filtrar, ordenar y sumar en Excel sin perder datos.
+const buildOrdersReportWorkbook = (ExcelJS, reportOrders, { periodLabel, clientLabel }) => {
+  const workbook = new ExcelJS.Workbook()
+  const { byState, clients, products, totalValue, ordersWithoutPrice } = summarizeOrdersReport(reportOrders)
+  const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F6F3B' } }
+
+  const addTable = (sheet, columns, rows) => {
+    sheet.columns = columns.map(({ header, key, width, numFmt }) => ({ header, key, width, style: numFmt ? { numFmt } : {} }))
+    const headerRow = sheet.getRow(1)
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    headerRow.fill = headerFill
+    rows.forEach((row) => sheet.addRow(row))
+    sheet.views = [{ state: 'frozen', ySplit: 1 }]
+  }
+
+  const summary = workbook.addWorksheet('Resumen')
+  summary.columns = [{ width: 42 }, { width: 24 }]
+  summary.addRow(['Reporte detallado de pedidos']).font = { bold: true, size: 14 }
+  summary.addRow(['Periodo', periodLabel])
+  summary.addRow(['Cliente', clientLabel])
+  summary.addRow(['Generado', new Date().toLocaleString('es-GT')])
+  summary.addRow([])
+  const summaryHeader = summary.addRow(['Resumen', 'Valor'])
+  summaryHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+  summaryHeader.fill = headerFill
+  summary.addRow(['Total de pedidos', reportOrders.length])
+  summary.addRow(['Clientes atendidos', clients.length])
+  summary.addRow(['Valor total de pedidos', totalValue]).getCell(2).numFmt = EXCEL_CURRENCY_FORMAT
+  Object.entries(byState).forEach(([estado, count]) => summary.addRow([`Pedidos en estado ${estado}`, count]))
+
+  if (ordersWithoutPrice > 0) {
+    summary.addRow(['Pedidos con lineas sin precio registrado', ordersWithoutPrice])
+  }
+
+  addTable(
+    workbook.addWorksheet('Por cliente'),
+    [
+      { header: 'Cliente', key: 'nombre', width: 36 },
+      { header: 'Pedidos', key: 'pedidos', width: 12 },
+      { header: 'Productos', key: 'lineas', width: 12 },
+      { header: 'Valor', key: 'valor', width: 16, numFmt: EXCEL_CURRENCY_FORMAT },
+    ],
+    clients.map((row) => ({ nombre: row.nombre, pedidos: row.pedidos, lineas: row.lineas, valor: row.valor }))
+  )
+
+  addTable(
+    workbook.addWorksheet('Por producto'),
+    [
+      { header: 'Producto', key: 'nombre', width: 36 },
+      { header: 'Cantidad', key: 'cantidad', width: 14, numFmt: EXCEL_QUANTITY_FORMAT },
+      { header: 'Unidad', key: 'unidad', width: 12 },
+      { header: 'Pedidos', key: 'pedidos', width: 12 },
+      { header: 'Valor', key: 'valor', width: 16, numFmt: EXCEL_CURRENCY_FORMAT },
+    ],
+    products.map((row) => ({ nombre: row.nombre, cantidad: row.cantidad, unidad: row.unidad, pedidos: row.pedidos.size, valor: row.valor }))
+  )
+
+  // Detalle: una fila por linea con los datos del pedido repetidos (sin celdas combinadas,
+  // para que los filtros y tablas dinamicas de Excel funcionen).
+  const detail = workbook.addWorksheet('Detalle')
+  const detailRows = []
+
+  reportOrders.forEach((order) => {
+    const base = {
+      pedido: formatPhaseCode('pedido', order.id_pedido),
+      fecha: formatDateOnly(order.fecha_creacion),
+      cliente: order.nombre_comercial || `Cliente #${order.id_cliente}`,
+      estado: order.estado || '-',
+      entrega: formatDateOnly(order.fecha_entrega || order.fecha_entrega_programada),
+    }
+    const lineas = order.lineas && order.lineas.length > 0 ? order.lineas : [null]
+
+    lineas.forEach((linea) => {
+      detailRows.push(
+        linea
+          ? {
+              ...base,
+              producto: linea.producto_nombre || `Producto #${linea.id_producto}`,
+              cantidad: Number(linea.cantidad || 0),
+              unidad: linea.unidad_medida || '',
+              precio: tieneValorCongelado(linea) ? Number(linea.precio_unitario) : null,
+              subtotal: tieneValorCongelado(linea) ? calcularValorLinea(linea) : null,
+              estadoLinea: linea.estado_entrega || '-',
+            }
+          : { ...base, producto: 'Sin productos', estadoLinea: '-' }
+      )
+    })
+  })
+
+  addTable(
+    detail,
+    [
+      { header: 'Pedido', key: 'pedido', width: 14 },
+      { header: 'Fecha', key: 'fecha', width: 12 },
+      { header: 'Cliente', key: 'cliente', width: 30 },
+      { header: 'Estado', key: 'estado', width: 16 },
+      { header: 'Entrega', key: 'entrega', width: 12 },
+      { header: 'Producto', key: 'producto', width: 32 },
+      { header: 'Cantidad', key: 'cantidad', width: 12, numFmt: EXCEL_QUANTITY_FORMAT },
+      { header: 'Unidad', key: 'unidad', width: 12 },
+      { header: 'Precio unit.', key: 'precio', width: 14, numFmt: EXCEL_CURRENCY_FORMAT },
+      { header: 'Subtotal', key: 'subtotal', width: 14, numFmt: EXCEL_CURRENCY_FORMAT },
+      { header: 'Estado linea', key: 'estadoLinea', width: 14 },
+    ],
+    detailRows
+  )
+
+  if (detailRows.length > 0) {
+    const lastDataRow = detailRows.length + 1
+    const totalRow = detail.addRow({ producto: 'Total', subtotal: { formula: `SUM(J2:J${lastDataRow})`, result: totalValue } })
+    totalRow.font = { bold: true }
+  }
+
+  return workbook
+}
+
+const downloadBlob = (blob, fileName) => {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
 function OrdersModule({ token, isActive }) {
   const [orders, setOrders] = useState([])
   const [clients, setClients] = useState([])
@@ -301,6 +442,7 @@ function OrdersModule({ token, isActive }) {
   const [isReportLoading, setIsReportLoading] = useState(false)
   const [reportError, setReportError] = useState('')
   const [isGeneratingReportPdf, setIsGeneratingReportPdf] = useState(false)
+  const [isGeneratingReportExcel, setIsGeneratingReportExcel] = useState(false)
 
   useEffect(() => {
     if (!isActive) {
@@ -400,6 +542,43 @@ function OrdersModule({ token, isActive }) {
     const cleared = { ...getCurrentMonthRange(), id_cliente: '' }
     setReportFilters(cleared)
     loadReports(cleared)
+  }
+
+  // Mismos filtros y datos que el PDF, exportados como .xlsx. exceljs se carga solo al usarlo
+  // para no engordar el bundle inicial.
+  const handleDownloadOrdersReportExcel = async () => {
+    const dateError = getReportDateError()
+
+    if (dateError) {
+      notifyError(dateError)
+      return
+    }
+
+    setIsGeneratingReportExcel(true)
+
+    try {
+      const [{ default: ExcelJS }, freshOrders] = await Promise.all([import('exceljs'), listOrdersRequest(token)])
+      const ordersList = Array.isArray(freshOrders) ? freshOrders : []
+      setOrders(ordersList)
+
+      const reportOrders = filterOrdersForReport(ordersList, reportFilters)
+      const selectedClient = clients.find((client) => String(client.id_cliente) === String(reportFilters.id_cliente))
+      const periodLabel = `${formatFilterDate(reportFilters.desde)} - ${formatFilterDate(reportFilters.hasta)}`
+      const clientLabel = reportFilters.id_cliente
+        ? selectedClient?.nombre_comercial || `Cliente #${reportFilters.id_cliente}`
+        : 'Todos los clientes'
+
+      const workbook = buildOrdersReportWorkbook(ExcelJS, reportOrders, { periodLabel, clientLabel })
+      const buffer = await workbook.xlsx.writeBuffer()
+      downloadBlob(
+        new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+        `reporte_pedidos_${reportFilters.desde}_${reportFilters.hasta}.xlsx`
+      )
+    } catch (error) {
+      notifyError(error.message || 'No se pudo generar el reporte en Excel')
+    } finally {
+      setIsGeneratingReportExcel(false)
+    }
   }
 
   // Abre el PDF en otra pestana con el dialogo de impresion (desde ahi tambien se puede
@@ -778,6 +957,14 @@ function OrdersModule({ token, isActive }) {
                 disabled={isGeneratingReportPdf}
               >
                 {isGeneratingReportPdf ? 'Generando...' : 'Descargar PDF'}
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={handleDownloadOrdersReportExcel}
+                disabled={isGeneratingReportExcel}
+              >
+                {isGeneratingReportExcel ? 'Generando...' : 'Descargar Excel'}
               </button>
             </div>
           </form>
