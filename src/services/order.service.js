@@ -115,7 +115,7 @@ export const getComprasPorClienteReportRequest = async ({ desde, hasta } = {}, t
     headers: buildHeaders(token),
   })
 
-  return parseResponse(response, 'No se pudo obtener el reporte de compras por cliente')
+  return parseResponse(response, 'No se pudo obtener el reporte de ventas por cliente')
 }
 
 export const getComprasPorProductoReportRequest = async ({ desde, hasta, id_cliente } = {}, token) => {
@@ -127,5 +127,5 @@ export const getComprasPorProductoReportRequest = async ({ desde, hasta, id_clie
     }
   )
 
-  return parseResponse(response, 'No se pudo obtener el reporte de compras por producto')
+  return parseResponse(response, 'No se pudo obtener el reporte de ventas por producto')
 }

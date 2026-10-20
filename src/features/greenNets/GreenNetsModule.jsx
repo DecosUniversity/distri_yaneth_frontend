@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { listGreenNetsRequest } from '../../services/green_net.service'
 import { downloadTraceabilityLabelPdf } from '../../utils/traceabilityLabel'
 import ReloadButton from '../../components/common/ReloadButton'
+import PhaseCode from '../../components/common/PhaseCode'
 
 const formatNumber = (value) => {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
@@ -176,9 +177,9 @@ function GreenNetsModule({ token, isActive }) {
 
             {filteredNets.map((net) => (
               <tr key={net.id_red}>
-                <td>#{net.id_red}</td>
+                <td><PhaseCode tipo="red" id={net.id_red} /></td>
                 <td>
-                  #{net.id_sublote} {net.codigo_sublote ? `(${net.codigo_sublote})` : ''}
+                  <PhaseCode tipo="sublote" id={net.id_sublote} /> {net.codigo_sublote ? `(${net.codigo_sublote})` : ''}
                 </td>
                 <td>{net.id_lote_mp ? `#${net.id_lote_mp}` : '-'}</td>
                 <td>{net.producto_nombre || `Producto #${net.id_producto}`}</td>

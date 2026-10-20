@@ -65,6 +65,25 @@ export const deleteMermaTypeRequest = async (id, token) => {
   return true
 }
 
+export const listColdRoomTypesRequest = async (token) => {
+  const response = await fetch(`${API_BASE_URL}/api/produccion/cuartos-frio`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  })
+
+  return parseResponse(response, 'No se pudieron obtener los cuartos frios')
+}
+
+export const createColdRoomTypeRequest = async (payload, token) => {
+  const response = await fetch(`${API_BASE_URL}/api/produccion/cuartos-frio`, {
+    method: 'POST',
+    headers: buildHeaders(token),
+    body: JSON.stringify(payload),
+  })
+
+  return parseResponse(response, 'No se pudo registrar el cuarto frio')
+}
+
 export const listStageTypesRequest = async (token) => {
   const response = await fetch(`${API_BASE_URL}/api/produccion/tipos-etapa`, {
     method: 'GET',

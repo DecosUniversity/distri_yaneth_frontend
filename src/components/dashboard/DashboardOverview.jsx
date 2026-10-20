@@ -10,6 +10,7 @@ const DashboardCharts = lazy(() => import('./DashboardCharts'))
 function DashboardOverview({
   token,
   roleName,
+  userId,
   showUpcomingVehicleServices = true,
   showUpcomingMaturationLots = true,
   showProductionStatus = true,
@@ -24,7 +25,9 @@ function DashboardOverview({
     <>
       <CollapsibleSection title="Resumen en tiempo real" storageKey="dashboard:collapsed:widgets">
         <div className="dashboard-widgets">
-          {showPendingAssignments ? <PendingAssignmentsWidget token={token} roleName={roleName} /> : null}
+          {showPendingAssignments ? (
+            <PendingAssignmentsWidget token={token} roleName={roleName} userId={userId} />
+          ) : null}
           {showUpcomingVehicleServices ? <UpcomingVehicleServicesWidget token={token} /> : null}
           {showUpcomingMaturationLots ? <UpcomingMaturationLotsWidget token={token} /> : null}
           {showProductionStatus ? <ProductionStatusWidget token={token} /> : null}

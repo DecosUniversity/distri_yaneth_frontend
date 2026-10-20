@@ -11,6 +11,9 @@ import CollapsibleSection from '../../components/dashboard/CollapsibleSection'
 import ReloadButton from '../../components/common/ReloadButton'
 import { notifyError, notifySuccess } from '../../utils/toast'
 
+// Oculto temporalmente: un servicio registrado no deberia editarse ni eliminarse.
+const SHOW_ROW_ACTIONS = false
+
 const EMPTY_FORM = {
   id_vehiculo: '',
   id_tipo_servicio: '',
@@ -368,13 +371,13 @@ function VehicleServicesModule({ token, isActive }) {
               <th>Costo</th>
               <th>Proximo km</th>
               <th>Notas</th>
-              <th>Acciones</th>
+              {SHOW_ROW_ACTIONS ? <th>Acciones</th> : null}
             </tr>
           </thead>
           <tbody>
             {services.length === 0 && !isLoading ? (
               <tr>
-                <td colSpan="8" className="empty-table-cell">
+                <td colSpan={SHOW_ROW_ACTIONS ? 8 : 7} className="empty-table-cell">
                   No hay servicios de vehiculo registrados.
                 </td>
               </tr>
@@ -389,18 +392,20 @@ function VehicleServicesModule({ token, isActive }) {
                 <td>{formatCurrency(service.costo_servicio)}</td>
                 <td>{service.proximo_servicio_km ?? '-'}</td>
                 <td>{service.notas || '-'}</td>
-                <td className="table-actions">
-                  <button type="button" className="secondary-button" onClick={() => handleEdit(service)}>
-                    Editar
-                  </button>
-                  <button
-                    type="button"
-                    className="danger-button"
-                    onClick={() => handleDelete(service.id_servicio)}
-                  >
-                    Eliminar
-                  </button>
-                </td>
+                {SHOW_ROW_ACTIONS ? (
+                  <td className="table-actions">
+                    <button type="button" className="secondary-button" onClick={() => handleEdit(service)}>
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      className="danger-button"
+                      onClick={() => handleDelete(service.id_servicio)}
+                    >
+                      Eliminar
+                    </button>
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>

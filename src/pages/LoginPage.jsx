@@ -24,7 +24,7 @@ function LoginPage({ errorMessage, isSubmitting, onLogin }) {
   return (
     <main className="login-page">
       <section className="brand-panel" aria-label="Presentacion del sistema">
-        <div className="badge">Gestion</div>
+        <div className="badge">Produccion y Distribucion</div>
         <h1>Control inteligente para frutas y verduras</h1>
         <p>
           Administra inventario, clientes y proveedores desde un solo panel.

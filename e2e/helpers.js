@@ -1,5 +1,13 @@
 import { expect } from '@playwright/test'
 import { MODULE_GROUPS, MODULE_DEFINITIONS } from '../src/config/rolePermissions.js'
+import { formatPhaseCode } from '../src/utils/phaseCode.js'
+
+// Las tablas muestran codigos de fase (LMP-000012, SUB-000009...) en vez de "#12". Filtrar por el
+// codigo completo ademas evita que "#5" coincida tambien con "#15".
+export const phaseCode = formatPhaseCode
+
+// "SUB-000009 (A)" -> "9" (string, como lo devolvian antes estos helpers).
+export const idFromPhaseCode = (text) => String(Number(text.match(/[A-Z]{3}-(\d+)/)[1]))
 
 const GROUP_LABEL_BY_MODULE_LABEL = new Map()
 for (const group of MODULE_GROUPS) {
@@ -72,11 +80,11 @@ export async function createMateriaPrimaEntry(page, docRef) {
 export async function acceptPendingLot(page, entryId, estadoMaduracion = 'Verde') {
   await goToModule(page, 'Maduracion MP')
   const pendingTable = page.locator('table.providers-table').first()
-  const pendingRow = pendingTable.locator('tbody tr').filter({ hasText: `#${entryId}` })
+  const pendingRow = pendingTable.locator('tbody tr').filter({ hasText: phaseCode('entrada', entryId) })
   await expect(pendingRow).toHaveCount(1)
 
   const loteCellText = await pendingRow.locator('td').first().textContent()
-  const loteId = loteCellText.trim().replace('#', '')
+  const loteId = idFromPhaseCode(loteCellText)
 
   await pendingRow.getByRole('button', { name: 'Aceptar' }).click()
   await page.getByLabel('Estado de maduracion *').selectOption(estadoMaduracion)
@@ -92,8 +100,8 @@ export async function acceptPendingLot(page, entryId, estadoMaduracion = 'Verde'
 export async function findSublotIdInTab(page, loteId, tabNameRegex) {
   await page.getByRole('button', { name: tabNameRegex }).click()
   const table = page.locator('table.providers-table').last()
-  const row = table.locator('tbody tr').filter({ hasText: `#${loteId}` })
+  const row = table.locator('tbody tr').filter({ hasText: phaseCode('lote', loteId) })
   await expect(row).toHaveCount(1)
   const cellText = await row.locator('td').first().textContent()
-  return cellText.match(/#(\d+)/)[1]
+  return idFromPhaseCode(cellText)
 }

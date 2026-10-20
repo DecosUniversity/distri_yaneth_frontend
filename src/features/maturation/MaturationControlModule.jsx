@@ -11,7 +11,9 @@ import {
   listSublotsRequest,
   splitSublotRequest,
 } from '../../services/maturation.service'
+import { listColdRoomTypesRequest } from '../../services/production.service'
 import ReloadButton from '../../components/common/ReloadButton'
+import PhaseCode from '../../components/common/PhaseCode'
 import { notifyError, notifySuccess } from '../../utils/toast'
 
 const RIPENESS_STATES = ['Verde', 'Sarazo', 'Maduro', 'Sobre maduro']
@@ -34,6 +36,7 @@ const EMPTY_CONTROL_FORM = {
   peso_medido_kg: '',
   porcentaje_materia_seca: '',
   temperatura_cuarto: '',
+  id_cuarto_frio: '',
   observaciones: '',
 }
 const EMPTY_SPLIT_FORM = { peso_kg: '', observaciones: '' }
@@ -84,6 +87,7 @@ function MaturationControlModule({ token, isActive }) {
   const [activeAction, setActiveAction] = useState(null)
 
   const [controlForm, setControlForm] = useState(EMPTY_CONTROL_FORM)
+  const [coldRooms, setColdRooms] = useState([])
   const [splitForm, setSplitForm] = useState(EMPTY_SPLIT_FORM)
   const [closeForm, setCloseForm] = useState(EMPTY_CLOSE_FORM)
 
@@ -106,15 +110,19 @@ function MaturationControlModule({ token, isActive }) {
     setIsLoading(true)
 
     try {
-      const [lotsData, sublotsData, controlsData] = await Promise.all([
+      const [lotsData, sublotsData, controlsData, coldRoomsData] = await Promise.all([
         listMaturationLotsRequest(token),
         listSublotsRequest(token),
         listMaturationControlsRequest(token),
+        // El cuarto frio es opcional en el control: si el catalogo falla, el modulo sigue
+        // funcionando y el selector solo queda vacio.
+        listColdRoomTypesRequest(token).catch(() => []),
       ])
 
       setLots(Array.isArray(lotsData) ? lotsData : [])
       setSublots(Array.isArray(sublotsData) ? sublotsData : [])
       setControls(Array.isArray(controlsData) ? controlsData : [])
+      setColdRooms(Array.isArray(coldRoomsData) ? coldRoomsData : [])
     } catch (error) {
       setModuleError(error.message || 'No se pudo cargar informacion de maduracion')
     } finally {
@@ -302,7 +310,8 @@ function MaturationControlModule({ token, isActive }) {
         grados_brix: Number(controlForm.grados_brix),
         peso_medido_kg: emptyToUndefined(controlForm.peso_medido_kg),
         porcentaje_materia_seca: emptyToUndefined(controlForm.porcentaje_materia_seca),
-        temperatura_cuarto: emptyToUndefined(controlForm.temperatura_cuarto),
+        temperatura_cuarto: Number(controlForm.temperatura_cuarto),
+        id_cuarto_frio: controlForm.id_cuarto_frio ? Number(controlForm.id_cuarto_frio) : undefined,
         observaciones: emptyToUndefined(controlForm.observaciones.trim()),
       }
 
@@ -429,7 +438,7 @@ function MaturationControlModule({ token, isActive }) {
 
     autoTable(doc, {
       startY: doc.lastAutoTable.finalY + 8,
-      head: [['Fecha', 'Brix', 'Peso medido', 'Materia seca %', 'Temperatura']],
+      head: [['Fecha', 'Brix', 'Peso medido', 'Materia seca %', 'Temperatura', 'Cuarto frio']],
       body:
         sublotControls.length > 0
           ? sublotControls.map((control) => [
@@ -438,8 +447,9 @@ function MaturationControlModule({ token, isActive }) {
               formatNumber(control.peso_medido_kg),
               control.porcentaje_materia_seca ?? '-',
               control.temperatura_cuarto ?? '-',
+              control.cuarto_frio_nombre || '-',
             ])
-          : [['-', '-', '-', '-', '-']],
+          : [['-', '-', '-', '-', '-', '-']],
       styles: { fontSize: 9, cellPadding: 2 },
       headStyles: { fillColor: [31, 111, 59] },
     })
@@ -561,8 +571,8 @@ function MaturationControlModule({ token, isActive }) {
 
             {pendingLots.map((lot) => (
               <tr key={lot.id_lote_mp}>
-                <td>#{lot.id_lote_mp}</td>
-                <td>{lot.id_entrada_origen ? `#${lot.id_entrada_origen}` : '-'}</td>
+                <td><PhaseCode tipo="lote" id={lot.id_lote_mp} /></td>
+                <td>{lot.id_entrada_origen ? <PhaseCode tipo="entrada" id={lot.id_entrada_origen} /> : '-'}</td>
                 <td>{lot.producto_nombre || `Producto #${lot.id_producto}`}</td>
                 <td>{lot.proveedor_nombre || `Proveedor #${lot.id_proveedor}`}</td>
                 <td>{lot.fecha_recepcion || '-'}</td>
@@ -621,7 +631,7 @@ function MaturationControlModule({ token, isActive }) {
 
               return (
                 <tr key={lot.id_lote_mp}>
-                  <td>#{lot.id_lote_mp}</td>
+                  <td><PhaseCode tipo="lote" id={lot.id_lote_mp} /></td>
                   <td>{lot.producto_nombre || `Producto #${lot.id_producto}`}</td>
                   <td>{lot.proveedor_nombre || `Proveedor #${lot.id_proveedor}`}</td>
                   <td>{lot.fecha_recepcion || '-'}</td>
@@ -736,9 +746,9 @@ function MaturationControlModule({ token, isActive }) {
             {filteredSublots.map((sublot) => (
               <tr key={sublot.id_sublote}>
                 <td>
-                  #{sublot.id_sublote} ({sublot.codigo_sublote})
+                  <PhaseCode tipo="sublote" id={sublot.id_sublote} /> ({sublot.codigo_sublote})
                 </td>
-                <td>#{sublot.id_lote_mp}</td>
+                <td><PhaseCode tipo="lote" id={sublot.id_lote_mp} /></td>
                 <td>{sublot.producto_nombre || `Producto #${sublot.id_producto}`}</td>
                 <td>{sublot.proveedor_nombre || `Proveedor #${sublot.id_proveedor}`}</td>
                 <td>{formatNumber(sublot.peso_kg)}</td>
@@ -854,12 +864,13 @@ function MaturationControlModule({ token, isActive }) {
                     <th>Peso medido</th>
                     <th>Materia seca %</th>
                     <th>Temperatura</th>
+                    <th>Cuarto frio</th>
                   </tr>
                 </thead>
                 <tbody>
                   {controlsForDetail.length === 0 ? (
                     <tr>
-                      <td colSpan="5" className="empty-table-cell">
+                      <td colSpan="6" className="empty-table-cell">
                         Sin controles registrados.
                       </td>
                     </tr>
@@ -871,6 +882,7 @@ function MaturationControlModule({ token, isActive }) {
                       <td>{formatNumber(control.peso_medido_kg)}</td>
                       <td>{control.porcentaje_materia_seca ?? '-'}</td>
                       <td>{control.temperatura_cuarto ?? '-'}</td>
+                      <td>{control.cuarto_frio_nombre || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -939,7 +951,7 @@ function MaturationControlModule({ token, isActive }) {
                 </label>
 
                 <label>
-                  Temperatura cuarto
+                  Temperatura cuarto (°C) *
                   <input
                     name="temperatura_cuarto"
                     type="number"
@@ -947,7 +959,21 @@ function MaturationControlModule({ token, isActive }) {
                     value={controlForm.temperatura_cuarto}
                     onChange={handleControlFieldChange}
                     placeholder="0.00"
+                    required
                   />
+                </label>
+
+                <label>
+                  Cuarto frio
+                  <select name="id_cuarto_frio" value={controlForm.id_cuarto_frio} onChange={handleControlFieldChange}>
+                    <option value="">Sin cuarto frio</option>
+                    {coldRooms.map((room) => (
+                      <option key={room.id_cuarto_frio} value={room.id_cuarto_frio}>
+                        {room.nombre_cuarto}
+                      </option>
+                    ))}
+                  </select>
+                  <small>Opcional. Se administran en el catalogo de cuartos frios de Produccion.</small>
                 </label>
 
                 <label>

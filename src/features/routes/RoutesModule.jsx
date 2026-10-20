@@ -11,6 +11,7 @@ import {
   registerRouteDepartureRequest,
 } from '../../services/route.service'
 import ReloadButton from '../../components/common/ReloadButton'
+import PhaseCode from '../../components/common/PhaseCode'
 import ModalCloseButton from '../../components/common/ModalCloseButton'
 import { notifyError, notifySuccess } from '../../utils/toast'
 
@@ -710,7 +711,7 @@ function RoutesModule({ token, isActive, roleName }) {
                               onChange={() => toggleOrderSelection(order.id_pedido)}
                             />
                           </td>
-                          <td>#{order.id_pedido}</td>
+                          <td><PhaseCode tipo="pedido" id={order.id_pedido} /></td>
                           <td>{order.nombre_comercial || `Cliente #${order.id_cliente}`}</td>
                           <td>{formatUbicacion(order)}</td>
                           <td>{formatProductosSummary(order.lineas)}</td>
@@ -792,7 +793,7 @@ function RoutesModule({ token, isActive, roleName }) {
                     return (
                       <Fragment key={item.id_pedido}>
                         <tr>
-                          <td>#{item.id_pedido}</td>
+                          <td><PhaseCode tipo="pedido" id={item.id_pedido} /></td>
                           <td>{item.nombre_comercial || `Cliente #${item.id_cliente}`}</td>
                           <td>{computeManifestStatus(item)}</td>
                           <td>{formatCurrency(item.valor_total)}</td>

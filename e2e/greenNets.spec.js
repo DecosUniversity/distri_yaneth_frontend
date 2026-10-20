@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { authFile } from './test-users.js'
-import { createMateriaPrimaEntry, acceptPendingLot, findSublotIdInTab, goToModule, successMessage } from './helpers.js'
+import { createMateriaPrimaEntry, acceptPendingLot, findSublotIdInTab, goToModule, successMessage, phaseCode } from './helpers.js'
 
 // El empaque de redes se estandarizo dentro de Produccion ("+ Empacar red"): un sub-lote Verde
 // inicia un proceso de produccion como cualquier otro (mismo mecanismo, con su etapa y su
@@ -35,7 +35,7 @@ test.describe('Modulo Produccion - empacar red', () => {
 
     // El proceso resultante se gestiona igual que cualquier otro: se ve la etapa con su
     // desglose de cajas dentro del detalle.
-    const processRow = page.locator('table.providers-table tbody tr').filter({ hasText: `#${subloteId}` })
+    const processRow = page.locator('table.providers-table tbody tr').filter({ hasText: phaseCode('sublote', subloteId) })
     await processRow.getByRole('button', { name: 'Gestionar' }).click()
     await expect(page.getByText('1 caja · 5 redes')).toBeVisible()
   })

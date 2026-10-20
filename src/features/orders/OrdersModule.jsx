@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import { listClientsRequest } from '../../services/client.service'
 import { listProductsRequest } from '../../services/product.service'
 import { listExistenciasByProductRequest } from '../../services/inventory.service'
@@ -11,6 +13,8 @@ import {
   updateOrderFechaEntregaRequest,
 } from '../../services/order.service'
 import ReloadButton from '../../components/common/ReloadButton'
+import PhaseCode from '../../components/common/PhaseCode'
+import { formatPhaseCode } from '../../utils/phaseCode'
 import { notifyError, notifySuccess } from '../../utils/toast'
 
 const FINISHED_PRODUCT_TYPE = 'Producto Terminado'
@@ -72,6 +76,199 @@ const getCurrentMonthRange = () => {
   return { desde: toDateInputValue(firstDay), hasta: toDateInputValue(lastDay) }
 }
 
+const PDF_HEAD_COLOR = [31, 111, 59]
+
+// 'YYYY-MM-DD' -> 'DD/MM/YYYY' sin pasar por Date (evita el corrimiento de zona horaria
+// que sufre new Date('YYYY-MM-DD'), que se interpreta como medianoche UTC).
+const formatFilterDate = (value) => (value ? value.split('-').reverse().join('/') : '')
+
+// Mismas reglas que buildOrderReportFilters en el backend (order.worker.js): por fecha de
+// creacion (hasta incluye el dia completo), cliente opcional y sin pedidos cancelados. Asi el
+// PDF detallado cuadra con las tablas de "Productos mas vendidos" y "Mejores compradores".
+const filterOrdersForReport = (ordersList, { desde, hasta, id_cliente }) =>
+  ordersList
+    .filter((order) => {
+      if (order.estado === 'Cancelado') {
+        return false
+      }
+
+      if (id_cliente && String(order.id_cliente) !== String(id_cliente)) {
+        return false
+      }
+
+      const createdDay = order.fecha_creacion ? toDateInputValue(new Date(order.fecha_creacion)) : ''
+
+      if (desde && createdDay < desde) {
+        return false
+      }
+
+      if (hasta && createdDay > hasta) {
+        return false
+      }
+
+      return true
+    })
+    .sort((a, b) => new Date(a.fecha_creacion) - new Date(b.fecha_creacion) || a.id_pedido - b.id_pedido)
+
+const buildOrdersReportPdf = (reportOrders, { periodLabel, clientLabel }) => {
+  const doc = new jsPDF({ orientation: 'landscape' })
+  const tableStyles = { styles: { fontSize: 9, cellPadding: 2 }, headStyles: { fillColor: PDF_HEAD_COLOR } }
+
+  doc.setFontSize(14)
+  doc.text('Reporte detallado de pedidos', 14, 15)
+  doc.setFontSize(10)
+  doc.text(`Periodo: ${periodLabel}`, 14, 22)
+  doc.text(`Cliente: ${clientLabel}`, 14, 27)
+  doc.text(`Generado: ${new Date().toLocaleString('es-GT')}`, 14, 32)
+
+  const byState = {}
+  const byClient = {}
+  const byProduct = {}
+  let totalValue = 0
+  let ordersWithoutPrice = 0
+
+  reportOrders.forEach((order) => {
+    const orderValue = calcularValorPedido(order.lineas)
+    totalValue += orderValue
+    byState[order.estado] = (byState[order.estado] || 0) + 1
+
+    if ((order.lineas || []).some((linea) => !tieneValorCongelado(linea))) {
+      ordersWithoutPrice += 1
+    }
+
+    const clientKey = order.id_cliente
+    byClient[clientKey] = byClient[clientKey] || {
+      nombre: order.nombre_comercial || `Cliente #${order.id_cliente}`,
+      pedidos: 0,
+      lineas: 0,
+      valor: 0,
+    }
+    byClient[clientKey].pedidos += 1
+    byClient[clientKey].lineas += (order.lineas || []).length
+    byClient[clientKey].valor += orderValue
+
+    ;(order.lineas || []).forEach((linea) => {
+      const productKey = linea.id_producto
+      byProduct[productKey] = byProduct[productKey] || {
+        nombre: linea.producto_nombre || `Producto #${linea.id_producto}`,
+        unidad: linea.unidad_medida || '',
+        cantidad: 0,
+        pedidos: new Set(),
+        valor: 0,
+      }
+      byProduct[productKey].cantidad += Number(linea.cantidad || 0)
+      byProduct[productKey].pedidos.add(order.id_pedido)
+      byProduct[productKey].valor += tieneValorCongelado(linea) ? calcularValorLinea(linea) : 0
+    })
+  })
+
+  const summaryRows = [
+    ['Total de pedidos', String(reportOrders.length)],
+    ['Clientes atendidos', String(Object.keys(byClient).length)],
+    ['Valor total de pedidos', formatCurrency(totalValue)],
+    ...Object.entries(byState).map(([estado, count]) => [`Pedidos en estado ${estado}`, String(count)]),
+  ]
+
+  if (ordersWithoutPrice > 0) {
+    summaryRows.push(['Pedidos con lineas sin precio registrado', String(ordersWithoutPrice)])
+  }
+
+  autoTable(doc, {
+    startY: 38,
+    head: [['Resumen', 'Valor']],
+    body: summaryRows,
+    tableWidth: 140,
+    ...tableStyles,
+  })
+
+  if (reportOrders.length === 0) {
+    doc.setFontSize(10)
+    doc.text('No hay pedidos para los filtros seleccionados.', 14, doc.lastAutoTable.finalY + 10)
+    return doc
+  }
+
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 8,
+    head: [['Cliente', 'Pedidos', 'Productos', 'Valor']],
+    body: Object.values(byClient)
+      .sort((a, b) => b.valor - a.valor || b.pedidos - a.pedidos)
+      .map((row) => [row.nombre, row.pedidos, row.lineas, formatCurrency(row.valor)]),
+    ...tableStyles,
+  })
+
+  autoTable(doc, {
+    startY: doc.lastAutoTable.finalY + 8,
+    head: [['Producto', 'Cantidad', 'Pedidos', 'Valor']],
+    body: Object.values(byProduct)
+      .sort((a, b) => b.cantidad - a.cantidad)
+      .map((row) => [row.nombre, `${formatNumber(row.cantidad)} ${row.unidad}`, row.pedidos.size, formatCurrency(row.valor)]),
+    ...tableStyles,
+  })
+
+  // Detalle: una fila por linea; los datos del pedido se agrupan con rowSpan sobre sus lineas.
+  const detailBody = []
+
+  reportOrders.forEach((order) => {
+    const lineas = order.lineas && order.lineas.length > 0 ? order.lineas : [null]
+    const rowSpan = lineas.length
+
+    lineas.forEach((linea, index) => {
+      const orderCells =
+        index === 0
+          ? [
+              { content: formatPhaseCode('pedido', order.id_pedido), rowSpan },
+              { content: formatDateOnly(order.fecha_creacion), rowSpan },
+              { content: order.nombre_comercial || `Cliente #${order.id_cliente}`, rowSpan },
+              { content: order.estado || '-', rowSpan },
+              { content: formatDateOnly(order.fecha_entrega || order.fecha_entrega_programada), rowSpan },
+            ]
+          : []
+
+      const lineCells = linea
+        ? [
+            linea.producto_nombre || `Producto #${linea.id_producto}`,
+            `${formatNumber(linea.cantidad)} ${linea.unidad_medida || ''}`,
+            tieneValorCongelado(linea) ? formatCurrency(linea.precio_unitario) : '-',
+            tieneValorCongelado(linea) ? formatCurrency(calcularValorLinea(linea)) : '-',
+            linea.estado_entrega || '-',
+          ]
+        : ['Sin productos', '-', '-', '-', '-']
+
+      const totalCell = index === 0 ? [{ content: formatCurrency(calcularValorPedido(order.lineas)), rowSpan }] : []
+
+      detailBody.push([...orderCells, ...lineCells, ...totalCell])
+    })
+  })
+
+  doc.addPage()
+  doc.setFontSize(12)
+  doc.text('Detalle de pedidos', 14, 15)
+
+  autoTable(doc, {
+    startY: 20,
+    head: [['Pedido', 'Fecha', 'Cliente', 'Estado', 'Entrega', 'Producto', 'Cantidad', 'Precio unit.', 'Subtotal', 'Estado linea', 'Total pedido']],
+    body: detailBody,
+    foot: [[{ content: 'Total general', colSpan: 10, styles: { halign: 'right' } }, formatCurrency(totalValue)]],
+    footStyles: { fillColor: [232, 245, 222], textColor: [31, 70, 40], fontStyle: 'bold' },
+    showFoot: 'lastPage',
+    rowPageBreak: 'avoid',
+    ...tableStyles,
+    styles: { ...tableStyles.styles, fontSize: 8, valign: 'middle' },
+  })
+
+  const pageCount = doc.internal.getNumberOfPages()
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+
+  for (let page = 1; page <= pageCount; page += 1) {
+    doc.setPage(page)
+    doc.setFontSize(8)
+    doc.text(`Pagina ${page} de ${pageCount}`, pageWidth - 14, pageHeight - 8, { align: 'right' })
+  }
+
+  return doc
+}
+
 function OrdersModule({ token, isActive }) {
   const [orders, setOrders] = useState([])
   const [clients, setClients] = useState([])
@@ -103,6 +300,7 @@ function OrdersModule({ token, isActive }) {
   const [mejoresClientes, setMejoresClientes] = useState([])
   const [isReportLoading, setIsReportLoading] = useState(false)
   const [reportError, setReportError] = useState('')
+  const [isGeneratingReportPdf, setIsGeneratingReportPdf] = useState(false)
 
   useEffect(() => {
     if (!isActive) {
@@ -173,8 +371,28 @@ function OrdersModule({ token, isActive }) {
     setReportFilters((previous) => ({ ...previous, [name]: value }))
   }
 
+  // El rango de fechas es obligatorio en los reportes; el cliente es opcional (vacio = todos).
+  const getReportDateError = () => {
+    if (!reportFilters.desde || !reportFilters.hasta) {
+      return 'Selecciona las fechas "Desde" y "Hasta" para generar el reporte'
+    }
+
+    if (reportFilters.desde > reportFilters.hasta) {
+      return 'La fecha "Desde" no puede ser posterior a "Hasta"'
+    }
+
+    return ''
+  }
+
   const handleReportFilterSubmit = (event) => {
     event.preventDefault()
+    const dateError = getReportDateError()
+
+    if (dateError) {
+      notifyError(dateError)
+      return
+    }
+
     loadReports()
   }
 
@@ -182,6 +400,54 @@ function OrdersModule({ token, isActive }) {
     const cleared = { ...getCurrentMonthRange(), id_cliente: '' }
     setReportFilters(cleared)
     loadReports(cleared)
+  }
+
+  // Abre el PDF en otra pestana con el dialogo de impresion (desde ahi tambien se puede
+  // "Guardar como PDF").
+  const handlePrintOrdersReport = async () => {
+    const dateError = getReportDateError()
+
+    if (dateError) {
+      notifyError(dateError)
+      return
+    }
+
+    // La ventana se abre antes del await: si se abre despues, el navegador la trata como
+    // popup no solicitado y la bloquea.
+    const printWindow = window.open('', '_blank')
+    setIsGeneratingReportPdf(true)
+
+    try {
+      // Se piden los pedidos de nuevo para que el reporte refleje el estado actual, no la
+      // lista cargada al abrir el modulo.
+      const freshOrders = await listOrdersRequest(token)
+      const ordersList = Array.isArray(freshOrders) ? freshOrders : []
+      setOrders(ordersList)
+
+      const reportOrders = filterOrdersForReport(ordersList, reportFilters)
+      const selectedClient = clients.find((client) => String(client.id_cliente) === String(reportFilters.id_cliente))
+      const periodLabel = `${formatFilterDate(reportFilters.desde)} - ${formatFilterDate(reportFilters.hasta)}`
+      const clientLabel = reportFilters.id_cliente
+        ? selectedClient?.nombre_comercial || `Cliente #${reportFilters.id_cliente}`
+        : 'Todos los clientes'
+
+      const doc = buildOrdersReportPdf(reportOrders, { periodLabel, clientLabel })
+      const fileName = `reporte_pedidos_${reportFilters.desde}_${reportFilters.hasta}.pdf`
+
+      doc.autoPrint()
+
+      if (printWindow) {
+        printWindow.location.href = doc.output('bloburl')
+      } else {
+        doc.save(fileName)
+        notifyError('El navegador bloqueo la ventana de impresion; se descargo el PDF en su lugar')
+      }
+    } catch (error) {
+      printWindow?.close()
+      notifyError(error.message || 'No se pudo generar el reporte')
+    } finally {
+      setIsGeneratingReportPdf(false)
+    }
   }
 
   const finishedProducts = products.filter((product) => product.tipo_producto === FINISHED_PRODUCT_TYPE)
@@ -476,23 +742,25 @@ function OrdersModule({ token, isActive }) {
                 </select>
               </label>
               <label className="maturation-filter-field">
-                <span className="maturation-filter-label">Desde</span>
+                <span className="maturation-filter-label">Desde *</span>
                 <input
                   type="date"
                   name="desde"
                   value={reportFilters.desde}
                   onChange={handleReportFilterChange}
                   className="maturation-filter-input"
+                  required
                 />
               </label>
               <label className="maturation-filter-field">
-                <span className="maturation-filter-label">Hasta</span>
+                <span className="maturation-filter-label">Hasta *</span>
                 <input
                   type="date"
                   name="hasta"
                   value={reportFilters.hasta}
                   onChange={handleReportFilterChange}
                   className="maturation-filter-input"
+                  required
                 />
               </label>
             </div>
@@ -500,8 +768,16 @@ function OrdersModule({ token, isActive }) {
               <button type="button" className="secondary-button" onClick={handleClearReportFilters}>
                 Limpiar filtros
               </button>
-              <button type="submit" disabled={isReportLoading}>
+              <button type="submit" className="primary-button" disabled={isReportLoading}>
                 {isReportLoading ? 'Cargando...' : 'Aplicar filtros'}
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={handlePrintOrdersReport}
+                disabled={isGeneratingReportPdf}
+              >
+                {isGeneratingReportPdf ? 'Generando...' : 'Descargar PDF'}
               </button>
             </div>
           </form>
@@ -616,7 +892,7 @@ function OrdersModule({ token, isActive }) {
 
                 {visibleOrders.map((order) => (
                   <tr key={order.id_pedido}>
-                    <td>#{order.id_pedido}</td>
+                    <td><PhaseCode tipo="pedido" id={order.id_pedido} /></td>
                     <td>{order.nombre_comercial || `Cliente #${order.id_cliente}`}</td>
                     <td>{order.estado}</td>
                     <td>{formatProductosSummary(order.lineas)}</td>
@@ -875,10 +1151,8 @@ function OrdersModule({ token, isActive }) {
               </table>
             </div>
             <p className="widget-muted" style={{ marginTop: 6 }}>
-              El valor de cada producto queda fijo (congelado) al precio de venta sugerido vigente en el momento en
-              que se crea el pedido, y ya no cambia aunque el precio del producto cambie despues. Este modulo no
-              factura ni registra ventas: es solo una referencia. Pedidos creados antes de esta funcionalidad
-              muestran "-" porque no tienen ese precio guardado.
+              Valores calculados con el precio de venta vigente al registrar el pedido. Documento de referencia,
+              no constituye factura.
             </p>
 
             {detailOrder.observaciones ? <p style={{ marginTop: 8 }}>Observaciones: {detailOrder.observaciones}</p> : null}

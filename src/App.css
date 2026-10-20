@@ -802,6 +802,31 @@
   }
 }
 
+.widget-list--nested {
+  margin-top: 6px;
+  padding-left: 10px;
+  border-left: 2px solid #dceccd;
+  gap: 4px;
+
+  li {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+
+    span {
+      color: #35552f;
+      font-size: 0.78rem;
+    }
+
+    small {
+      color: #6a7d60;
+      font-size: 0.72rem;
+      white-space: nowrap;
+    }
+  }
+}
+
 .panel-card {
   min-height: 300px;
   position: relative;
@@ -865,6 +890,50 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Codigo de fase (SUB-000009) + boton copiar, ver components/common/PhaseCode.jsx */
+.phase-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.phase-code-value {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 0.86em;
+  font-weight: 700;
+  color: var(--green-800);
+  background: #eef8e6;
+  border: 1px solid #cfe5bd;
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+.phase-code-copy {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--green-700);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+.phase-code-copy:hover,
+.phase-code-copy:focus-visible {
+  border-color: #bdd9a8;
+  background: #f3fce9;
 }
 
 .maturation-tab-strip {
@@ -947,10 +1016,12 @@
 .maturation-filter-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
   margin-top: 8px;
 }
 
-.maturation-filter-actions .secondary-button {
+.maturation-filter-actions .secondary-button,
+.maturation-filter-actions .primary-button {
   min-height: 36px;
 }
 
@@ -1132,6 +1203,7 @@
   font: inherit;
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .secondary-button {
@@ -1170,6 +1242,7 @@
     padding: 10px 12px;
     color: #2f4e33;
     font-size: 0.92rem;
+    vertical-align: top;
   }
 
   th {
@@ -1190,6 +1263,7 @@
 
 .table-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -1506,6 +1580,33 @@
   min-width: 0;
 }
 
+.trace-node-header-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.trace-node-header-row .trace-node-header {
+  flex: 1;
+  min-width: 0;
+}
+
+.trace-node-code {
+  flex-shrink: 0;
+  padding-top: 6px;
+}
+
+@media (max-width: 640px) {
+  .trace-node-header-row {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .trace-node-code {
+    padding: 0 0 4px;
+  }
+}
+
 .trace-node-title {
   margin: 0;
   font-weight: 700;
@@ -1604,4 +1705,15 @@
 .trace-note {
   font-size: 0.82rem;
   font-style: italic;
+}
+
+/* Campos deshabilitados: tono gris para que se distingan claramente de los editables. */
+input:not([type='checkbox']):not([type='radio']):disabled,
+select:disabled,
+textarea:disabled {
+  background: #eceeec;
+  border-color: #d3d7d3;
+  color: #7a817b;
+  cursor: not-allowed;
+  box-shadow: none;
 }

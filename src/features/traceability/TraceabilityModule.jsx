@@ -7,6 +7,8 @@ import {
   getTraceabilityByRefRequest,
   searchTraceabilityByFiltersRequest,
 } from '../../services/traceability.service'
+import PhaseCode from '../../components/common/PhaseCode'
+import { formatPhaseCode } from '../../utils/phaseCode'
 
 const TRACE_CODE_PATTERN = /^[A-Za-z]{2,4}-\d{6}-\d{3,}$/
 
@@ -57,26 +59,31 @@ const formatDateTime = (value) => {
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('es-GT', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function TraceNode({ level, title, subtitle, badge, defaultCollapsed, children }) {
+// `code` (un <PhaseCode/>) va fuera del <button> del encabezado: el boton copiar no puede
+// anidarse dentro de otro boton, y copiar no debe colapsar el nodo.
+function TraceNode({ level, title, subtitle, badge, code, defaultCollapsed, children }) {
   const [collapsed, setCollapsed] = useState(Boolean(defaultCollapsed))
 
   return (
     <div className={`trace-node trace-node-level-${level}`}>
-      <button
-        type="button"
-        className="trace-node-header"
-        onClick={() => setCollapsed((current) => !current)}
-        aria-expanded={!collapsed}
-      >
-        {badge ? <span className="trace-badge">{badge}</span> : null}
-        <div className="trace-node-text">
-          <p className="trace-node-title">{title}</p>
-          {subtitle ? <p className="trace-node-subtitle">{subtitle}</p> : null}
-        </div>
-        <span className={`dashboard-collapse-chevron trace-node-chevron ${collapsed ? 'is-collapsed' : ''}`} aria-hidden="true">
-          ▾
-        </span>
-      </button>
+      <div className="trace-node-header-row">
+        <button
+          type="button"
+          className="trace-node-header"
+          onClick={() => setCollapsed((current) => !current)}
+          aria-expanded={!collapsed}
+        >
+          {badge ? <span className="trace-badge">{badge}</span> : null}
+          <div className="trace-node-text">
+            <p className="trace-node-title">{title}</p>
+            {subtitle ? <p className="trace-node-subtitle">{subtitle}</p> : null}
+          </div>
+          <span className={`dashboard-collapse-chevron trace-node-chevron ${collapsed ? 'is-collapsed' : ''}`} aria-hidden="true">
+            ▾
+          </span>
+        </button>
+        {code ? <div className="trace-node-code no-print">{code}</div> : null}
+      </div>
       {children && !collapsed ? <div className="trace-children">{children}</div> : null}
     </div>
   )
@@ -126,7 +133,8 @@ function TraceExistenciaSummary({ existencia }) {
       <span className="trace-badge">{TYPE_LABELS.existencia}</span>
       <div className="trace-node-text">
         <p className="trace-node-title">
-          Existencia #{existencia.id_existencia} - {existencia.producto_nombre || 'Producto sin nombre'}
+          Existencia #{existencia.id_existencia} - {existencia.producto_nombre || 'Producto sin nombre'}{' '}
+          <PhaseCode tipo="existencia" id={existencia.id_existencia} />
         </p>
         <p className="trace-node-subtitle">
           Disponible: {formatNumber(existencia.cantidad_disponible)} | Vence: {formatDate(existencia.fecha_vencimiento)} | Estado: {existencia.estado_registro}
@@ -137,7 +145,7 @@ function TraceExistenciaSummary({ existencia }) {
             rowKey={(row) => row.id_detalle}
             rows={pedidos}
             columns={[
-              { key: 'pedido', label: 'Pedido', render: (row) => `#${row.id_pedido}` },
+              { key: 'pedido', label: 'Pedido', render: (row) => <PhaseCode tipo="pedido" id={row.id_pedido} /> },
               { key: 'cliente', label: 'Cliente', render: (row) => row.nombre_comercial || `Cliente #${row.id_cliente}` },
               { key: 'cantidad', label: 'Cantidad', render: (row) => formatNumber(row.cantidad) },
               { key: 'estado_entrega', label: 'Entrega', render: (row) => row.estado_entrega },
@@ -166,7 +174,7 @@ function TraceRedesTable({ redes }) {
         emptyMessage="Sin cajas de red verde empacadas."
         rowKey={(row) => row.id_red}
         columns={[
-          { key: 'id_red', label: 'Caja #', render: (row) => `#${row.id_red}` },
+          { key: 'id_red', label: 'Caja', render: (row) => <PhaseCode tipo="red" id={row.id_red} /> },
           { key: 'producto', label: 'Producto', render: (row) => row.existencia?.producto_nombre || '-' },
           { key: 'cantidad_redes', label: 'Redes', render: (row) => row.cantidad_redes ?? '-' },
           { key: 'peso_kg', label: 'Peso', render: (row) => formatNumber(row.peso_kg, 'kg') },
@@ -230,6 +238,7 @@ function TraceProceso({ proceso, defaultCollapsed }) {
       level={3}
       badge={TYPE_LABELS.proceso}
       title={`Proceso #${proceso.id_proceso} - ${proceso.producto_resultado_nombre || 'Producto sin definir'}`}
+      code={<PhaseCode tipo="proceso" id={proceso.id_proceso} />}
       subtitle={`Ingresado: ${formatNumber(proceso.cantidad_ingresada_kg, 'kg')} | Producido: ${formatNumber(proceso.cantidad_producida_kg, 'kg')} | Rendimiento: ${formatNumber(proceso.rendimiento_porcentaje)}% | Estado: ${proceso.estado_proceso}`}
       defaultCollapsed={defaultCollapsed}
     >
@@ -295,13 +304,36 @@ function TraceProceso({ proceso, defaultCollapsed }) {
   )
 }
 
+// Ubicacion y temperatura "actuales" del sub-lote = las del control mas reciente que las tenga.
+// Se buscan por separado: un control viejo puede traer temperatura pero no cuarto frio (el
+// cuarto es opcional y antes no existia).
+const getLatestColdRoomReading = (controles) => {
+  const newestFirst = [...(controles || [])].sort(
+    (a, b) => new Date(b.fecha_medicion) - new Date(a.fecha_medicion) || b.id_control - a.id_control
+  )
+  const withRoom = newestFirst.find((control) => control.cuarto_frio_nombre)
+  const withTemperature = newestFirst.find(
+    (control) => control.temperatura_cuarto !== null && control.temperatura_cuarto !== undefined
+  )
+
+  return {
+    ubicacion: withRoom ? withRoom.cuarto_frio_nombre : 'Sin cuarto frio',
+    temperatura: withTemperature
+      ? `${formatNumber(withTemperature.temperatura_cuarto, '°C')} (${formatDate(withTemperature.fecha_medicion)})`
+      : '-',
+  }
+}
+
 function TraceSublote({ sublote, defaultCollapsed }) {
+  const { ubicacion, temperatura } = getLatestColdRoomReading(sublote.controles)
+
   return (
     <TraceNode
       level={2}
       badge={TYPE_LABELS.sublote}
       title={`Sub-lote #${sublote.id_sublote} (${sublote.codigo_sublote})`}
-      subtitle={`Peso actual: ${formatNumber(sublote.peso_kg, 'kg')} | Maduracion: ${sublote.estado_maduracion} | Estado: ${sublote.estado_registro}`}
+      code={<PhaseCode tipo="sublote" id={sublote.id_sublote} />}
+      subtitle={`Peso actual: ${formatNumber(sublote.peso_kg, 'kg')} | Maduracion: ${sublote.estado_maduracion} | Estado: ${sublote.estado_registro} | Ubicacion: ${ubicacion} | Ultima temperatura: ${temperatura}`}
       defaultCollapsed={defaultCollapsed}
     >
       <div className="trace-subsection">
@@ -313,6 +345,7 @@ function TraceSublote({ sublote, defaultCollapsed }) {
             { key: 'grados_brix', label: 'Brix', render: (row) => formatNumber(row.grados_brix) },
             { key: 'peso_medido_kg', label: 'Peso medido', render: (row) => formatNumber(row.peso_medido_kg, 'kg') },
             { key: 'temperatura_cuarto', label: 'Temp.', render: (row) => formatNumber(row.temperatura_cuarto) },
+            { key: 'cuarto_frio_nombre', label: 'Cuarto frio', render: (row) => row.cuarto_frio_nombre || '-' },
           ]}
           rows={sublote.controles}
         />
@@ -338,6 +371,7 @@ function TraceLote({ lote, defaultCollapsed }) {
       level={1}
       badge={TYPE_LABELS.lote}
       title={`Lote MP #${lote.id_lote_mp} - ${lote.producto_nombre || 'Producto sin nombre'}`}
+      code={<PhaseCode tipo="lote" id={lote.id_lote_mp} />}
       subtitle={`Peso inicial: ${formatNumber(lote.peso_inicial_kg, 'kg')} | Unidades: ${lote.cantidad_unidades ?? '-'} | Estado: ${lote.estado_registro}`}
       defaultCollapsed={defaultCollapsed}
     >
@@ -354,6 +388,8 @@ function TraceRaiz({ raiz, defaultCollapsed }) {
       level={0}
       badge={TYPE_LABELS.entrada}
       title={`${raiz.codigo_lote || `Entrada #${raiz.id_entrada}`} - ${raiz.proveedor_nombre || 'Sin proveedor'}`}
+      // La entrada ya tiene su codigo de lote (el impreso en etiquetas); ENT-NNNNNN solo si no lo tiene.
+      code={<PhaseCode tipo="entrada" id={raiz.id_entrada} code={raiz.codigo_lote} />}
       subtitle={`Recibido: ${formatDateTime(raiz.fecha_recepcion)} | Documento: ${raiz.documento_referencia || '-'} | Receptor: ${raiz.receptor_nombre || '-'} | Costo total: ${formatNumber(raiz.costo_total)}`}
       defaultCollapsed={false}
     >
@@ -449,7 +485,11 @@ const buildTraceabilityPdf = (trace) => {
     ])
 
     ;(raiz.lotes || []).forEach((lote) => {
-      y = addPdfSectionTitle(doc, `Lote MP #${lote.id_lote_mp} - ${lote.producto_nombre || 'Producto sin nombre'}`, y)
+      y = addPdfSectionTitle(
+        doc,
+        `${formatPhaseCode('lote', lote.id_lote_mp)} | Lote MP #${lote.id_lote_mp} - ${lote.producto_nombre || 'Producto sin nombre'}`,
+        y
+      )
       y = addPdfInfoTable(doc, y, [
         ['Peso inicial', formatNumber(lote.peso_inicial_kg, 'kg')],
         ['Unidades', lote.cantidad_unidades ?? '-'],
@@ -457,22 +497,30 @@ const buildTraceabilityPdf = (trace) => {
       ])
 
       ;(lote.sublotes || []).forEach((sublote) => {
-        y = addPdfSectionTitle(doc, `  Sub-lote #${sublote.id_sublote} (${sublote.codigo_sublote})`, y)
+        y = addPdfSectionTitle(
+          doc,
+          `  ${formatPhaseCode('sublote', sublote.id_sublote)} | Sub-lote #${sublote.id_sublote} (${sublote.codigo_sublote})`,
+          y
+        )
+        const { ubicacion, temperatura } = getLatestColdRoomReading(sublote.controles)
         y = addPdfInfoTable(doc, y, [
           ['Peso actual', formatNumber(sublote.peso_kg, 'kg')],
           ['Maduracion', sublote.estado_maduracion],
           ['Estado', sublote.estado_registro],
+          ['Ubicacion', ubicacion],
+          ['Ultima temperatura', temperatura],
         ])
 
         y = addPdfTableOrEmpty(
           doc,
           y,
-          ['Fecha', 'Brix', 'Peso medido', 'Temp.'],
+          ['Fecha', 'Brix', 'Peso medido', 'Temp.', 'Cuarto frio'],
           (sublote.controles || []).map((control) => [
             formatDateTime(control.fecha_medicion),
             formatNumber(control.grados_brix),
             formatNumber(control.peso_medido_kg, 'kg'),
             formatNumber(control.temperatura_cuarto),
+            control.cuarto_frio_nombre || '-',
           ]),
           'Sin controles de maduracion registrados.'
         )
@@ -480,9 +528,9 @@ const buildTraceabilityPdf = (trace) => {
         y = addPdfTableOrEmpty(
           doc,
           y,
-          ['Caja #', 'Producto', 'Redes', 'Peso', 'Empacado', 'Por', 'Disponible', 'Vence'],
+          ['Caja', 'Producto', 'Redes', 'Peso', 'Empacado', 'Por', 'Disponible', 'Vence'],
           (sublote.redes || []).map((red) => [
-            `#${red.id_red}`,
+            formatPhaseCode('red', red.id_red),
             red.existencia?.producto_nombre || '-',
             red.cantidad_redes ?? '-',
             formatNumber(red.peso_kg, 'kg'),
@@ -497,7 +545,7 @@ const buildTraceabilityPdf = (trace) => {
         ;(sublote.procesos || []).forEach((proceso) => {
           y = addPdfSectionTitle(
             doc,
-            `    Proceso #${proceso.id_proceso} - ${proceso.producto_resultado_nombre || 'Producto sin definir'} (${proceso.estado_proceso})`,
+            `    ${formatPhaseCode('proceso', proceso.id_proceso)} | Proceso #${proceso.id_proceso} - ${proceso.producto_resultado_nombre || 'Producto sin definir'} (${proceso.estado_proceso})`,
             y
           )
 
@@ -566,7 +614,7 @@ const buildTraceabilityPdf = (trace) => {
               doc.setFontSize(8.5)
               doc.setTextColor(60, 60, 60)
               doc.text(
-                `Producto terminado: Existencia #${existencia.id_existencia} - ${existencia.producto_nombre || '-'} | Disponible: ${formatNumber(existencia.cantidad_disponible)} | Vence: ${formatDate(existencia.fecha_vencimiento)}`,
+                `Producto terminado: ${formatPhaseCode('existencia', existencia.id_existencia)} | Existencia #${existencia.id_existencia} - ${existencia.producto_nombre || '-'} | Disponible: ${formatNumber(existencia.cantidad_disponible)} | Vence: ${formatDate(existencia.fecha_vencimiento)}`,
                 16,
                 y
               )
@@ -584,7 +632,7 @@ const buildTraceabilityPdf = (trace) => {
         y,
         ['Existencia', 'Producto', 'Disponible', 'Vence', 'Estado'],
         raiz.existencias_directas.map((existencia) => [
-          `#${existencia.id_existencia}`,
+          formatPhaseCode('existencia', existencia.id_existencia),
           existencia.producto_nombre || '-',
           formatNumber(existencia.cantidad_disponible),
           formatDate(existencia.fecha_vencimiento),
@@ -607,7 +655,7 @@ const buildTraceabilityPdf = (trace) => {
     y += 10
 
     addPdfInfoTable(doc, y, [
-      ['Existencia', `#${existencia.id_existencia}`],
+      ['Existencia', formatPhaseCode('existencia', existencia.id_existencia)],
       ['Producto', existencia.producto_nombre || '-'],
       ['Disponible', formatNumber(existencia.cantidad_disponible)],
       ['Vence', formatDate(existencia.fecha_vencimiento)],
@@ -685,7 +733,9 @@ function TraceabilityModule({ token }) {
         const results = await searchTraceabilityRequest(term, token)
         setSearchResults(results)
 
-        if (results.length === 1) {
+        // Un pedido no tiene arbol propio (puede mezclar varios lotes): se muestra como resultado
+        // informativo en vez de intentar trazarlo.
+        if (results.length === 1 && results[0].tipo !== 'pedido') {
           const result = await getTraceabilityByRefRequest(results[0].tipo, results[0].id, token)
           setTrace(result)
           setCollapseAll(false)
@@ -756,7 +806,7 @@ function TraceabilityModule({ token }) {
               type="text"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Codigo de trazabilidad (ej. PLV-260825-003), numero de lote/sublote/proceso, proveedor o producto"
+              placeholder="Codigo de lote (ej. PLV-260825-003), codigo de fase (ej. SUB-000009, PRO-000005), proveedor o producto"
               className="maturation-filter-input"
             />
           </label>
@@ -832,6 +882,7 @@ function TraceabilityModule({ token }) {
               result.tipo === 'pedido' ? (
                 <div key={`${result.tipo}-${result.id}`} className="trace-result-item trace-result-item--static">
                   <span className="trace-badge">{TYPE_LABELS[result.tipo] || result.tipo}</span>
+                  <code className="phase-code-value">{result.codigo}</code>
                   <span>
                     {result.etiqueta} - {result.fecha} - {result.detalle}
                   </span>
@@ -844,6 +895,7 @@ function TraceabilityModule({ token }) {
                   onClick={() => handleSelectResult(result)}
                 >
                   <span className="trace-badge">{TYPE_LABELS[result.tipo] || result.tipo}</span>
+                  <code className="phase-code-value">{result.codigo}</code>
                   <span>
                     {result.etiqueta} - {result.fecha}
                     {result.detalle ? ` - ${result.detalle}` : ''}
@@ -861,19 +913,33 @@ function TraceabilityModule({ token }) {
         ) : (
           <div className="trace-results-list">
             <p className="widget-muted" style={{ margin: '0 0 8px' }}>
-              Varios resultados coinciden, selecciona uno para ver su trazabilidad completa:
+              {searchResults.length > 1
+                ? 'Varios resultados coinciden, selecciona uno para ver su trazabilidad completa. Usa el codigo de fase (ej. SUB-000009) para ir directo a uno:'
+                : 'Los pedidos son solo informativos (no tienen arbol de trazabilidad por lote):'}
             </p>
-            {searchResults.map((result) => (
-              <button
-                key={`${result.tipo}-${result.id}`}
-                type="button"
-                className="trace-result-item"
-                onClick={() => handleSelectResult(result)}
-              >
-                <span className="trace-badge">{TYPE_LABELS[result.tipo] || result.tipo}</span>
-                {result.etiqueta}
-              </button>
-            ))}
+            {searchResults.map((result) =>
+              result.tipo === 'pedido' ? (
+                <div key={`${result.tipo}-${result.id}`} className="trace-result-item trace-result-item--static">
+                  <span className="trace-badge">{TYPE_LABELS[result.tipo] || result.tipo}</span>
+                  <code className="phase-code-value">{result.codigo}</code>
+                  <span>
+                    {result.etiqueta}
+                    {result.detalle ? ` - ${result.detalle}` : ''}
+                  </span>
+                </div>
+              ) : (
+                <button
+                  key={`${result.tipo}-${result.id}`}
+                  type="button"
+                  className="trace-result-item"
+                  onClick={() => handleSelectResult(result)}
+                >
+                  <span className="trace-badge">{TYPE_LABELS[result.tipo] || result.tipo}</span>
+                  <code className="phase-code-value">{result.codigo}</code>
+                  {result.etiqueta}
+                </button>
+              )
+            )}
           </div>
         )
       ) : null}

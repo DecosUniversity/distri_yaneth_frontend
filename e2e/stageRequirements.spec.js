@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { authFile } from './test-users.js'
-import { createMateriaPrimaEntry, acceptPendingLot, findSublotIdInTab, goToModule, successMessage } from './helpers.js'
+import { createMateriaPrimaEntry, acceptPendingLot, findSublotIdInTab, goToModule, successMessage, phaseCode } from './helpers.js'
 
 // Verifica el plan de proceso obligatorio por producto: un Producto Terminado no se puede
 // crear sin definir su plan de etapas, y una vez definido, el proceso solo admite registrar
@@ -51,7 +51,7 @@ test.describe('Modulo Produccion - plan de etapas por producto', () => {
     await page.getByRole('button', { name: 'Iniciar proceso' }).click()
     await expect(successMessage(page, 'Proceso de produccion iniciado correctamente')).toBeVisible()
 
-    const processRow = page.locator('table.providers-table tbody tr').filter({ hasText: `#${subloteId}` })
+    const processRow = page.locator('table.providers-table tbody tr').filter({ hasText: phaseCode('sublote', subloteId) })
     await processRow.getByRole('button', { name: 'Gestionar' }).click()
 
     // Verificar el checklist de etapas requeridas, ambas pendientes al inicio

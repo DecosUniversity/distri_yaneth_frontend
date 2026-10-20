@@ -7,6 +7,7 @@ import {
   resolveOrderReturnRequest,
 } from '../../services/order_return.service'
 import ReloadButton from '../../components/common/ReloadButton'
+import PhaseCode from '../../components/common/PhaseCode'
 import { notifyError, notifySuccess } from '../../utils/toast'
 
 const RESOLUTION_REINGRESADO = 'Reingresado a inventario'
@@ -224,7 +225,7 @@ function ReturnsModule({ token, isActive, roleName }) {
 
                   return (
                     <tr key={line.id_detalle}>
-                      <td>#{line.id_pedido}</td>
+                      <td><PhaseCode tipo="pedido" id={line.id_pedido} /></td>
                       <td>{line.nombre_comercial || `Cliente #${line.id_cliente}`}</td>
                       <td>{line.piloto_nombre || (line.id_piloto ? `Piloto #${line.id_piloto}` : '-')}</td>
                       <td>{line.producto_nombre || `Producto #${line.id_producto}`}</td>
@@ -346,7 +347,7 @@ function ReturnsModule({ token, isActive, roleName }) {
                 {consultaReturns.map((item) => (
                   <tr key={item.id_devolucion}>
                     <td>#{item.id_devolucion}</td>
-                    <td>#{item.id_pedido}</td>
+                    <td><PhaseCode tipo="pedido" id={item.id_pedido} /></td>
                     <td>{item.producto_nombre || `Producto #${item.id_producto}`}</td>
                     <td>{item.piloto_nombre || (item.id_piloto ? `Piloto #${item.id_piloto}` : '-')}</td>
                     <td>{formatNumber(item.cantidad_devuelta)}</td>

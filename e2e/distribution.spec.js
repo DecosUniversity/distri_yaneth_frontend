@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { authFile } from './test-users.js'
-import { createMateriaPrimaEntry, acceptPendingLot, findSublotIdInTab, goToModule, successMessage, toastMessage } from './helpers.js'
+import { createMateriaPrimaEntry, acceptPendingLot, findSublotIdInTab, goToModule, successMessage, toastMessage, phaseCode } from './helpers.js'
 
 // La busqueda por numero en Trazabilidad es ambigua (entrada/lote/sub-lote pueden compartir el
 // mismo id por coincidencia de autoincremento): si aparece una lista de resultados en vez del
@@ -58,7 +58,7 @@ test.describe('Flujo de Distribucion: pedido -> entrega -> devolucion -> trazabi
     await page.getByRole('button', { name: 'Iniciar proceso' }).click()
     await expect(successMessage(page, 'Proceso de produccion iniciado correctamente')).toBeVisible()
 
-    const processRow = page.locator('table.providers-table tbody tr').filter({ hasText: `#${subloteId}` })
+    const processRow = page.locator('table.providers-table tbody tr').filter({ hasText: phaseCode('sublote', subloteId) })
     await processRow.getByRole('button', { name: 'Gestionar' }).click()
     await page.getByRole('button', { name: 'Finalizar proceso' }).click()
     const finalizeModal = page.locator('.modal-backdrop').last()

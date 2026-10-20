@@ -5,6 +5,7 @@ import { listInventoryRequest } from '../../services/inventory.service'
 import { listProductsRequest } from '../../services/product.service'
 import CollapsibleSection from '../../components/dashboard/CollapsibleSection'
 import ReloadButton from '../../components/common/ReloadButton'
+import PhaseCode from '../../components/common/PhaseCode'
 
 const LOW_STOCK_ONLY_OPTIONS = [
   { label: 'Todos', value: 'all' },
@@ -466,7 +467,7 @@ function InventoryModule({ token, isActive }) {
                   return (
                     <tr key={`fruta-${item.id_producto}-${item.id_lote_mp ?? 'sin-lote'}`}>
                       <td>{item.nombre}</td>
-                      <td>{item.id_lote_mp ? `#${item.id_lote_mp}` : '-'}</td>
+                      <td>{item.id_lote_mp ? <PhaseCode tipo="lote" id={item.id_lote_mp} /> : '-'}</td>
                       <td>{item.unidad_medida}</td>
                       <td>{formatNumber(item.peso_recibido)}</td>
                       <td>{formatNumber(item.fruta_stock_actual ?? item.stock_actual)}</td>

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { authFile } from './test-users.js'
-import { createMateriaPrimaEntry, acceptPendingLot, findSublotIdInTab, goToModule, successMessage } from './helpers.js'
+import { createMateriaPrimaEntry, acceptPendingLot, findSublotIdInTab, goToModule, successMessage, phaseCode } from './helpers.js'
 
 test.describe('Modulo Produccion', () => {
   test.use({ storageState: authFile('Administrador') })
@@ -23,7 +23,7 @@ test.describe('Modulo Produccion', () => {
     await expect(successMessage(page, 'Proceso de produccion iniciado correctamente')).toBeVisible()
 
     const processTable = page.locator('table.providers-table')
-    const processRow = processTable.locator('tbody tr').filter({ hasText: `#${subloteId}` })
+    const processRow = processTable.locator('tbody tr').filter({ hasText: phaseCode('sublote', subloteId) })
     await expect(processRow).toHaveCount(1)
     await processRow.getByRole('button', { name: 'Gestionar' }).click()
 
@@ -69,7 +69,7 @@ test.describe('Modulo Produccion', () => {
     await page.getByRole('tab', { name: 'Consultar' }).click()
     await page.getByRole('button', { name: /Finalizados/ }).click()
     await page.getByPlaceholder('#proceso o #lote').fill(subloteId)
-    const finishedRow = page.locator('table.providers-table tbody tr').filter({ hasText: `#${subloteId}` })
+    const finishedRow = page.locator('table.providers-table tbody tr').filter({ hasText: phaseCode('sublote', subloteId) })
     await expect(finishedRow).toHaveCount(1)
     await expect(finishedRow).toContainText('Pure de Platano Congelado 1 LB')
     await expect(finishedRow).toContainText('Finalizado')

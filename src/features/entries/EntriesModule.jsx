@@ -13,6 +13,7 @@ import {
   listUnitsByEntradaRequest,
 } from '../../services/entradas_mercancia.service'
 import ReloadButton from '../../components/common/ReloadButton'
+import PhaseCode from '../../components/common/PhaseCode'
 import { notifyError, notifySuccess } from '../../utils/toast'
 
 const EMPTY_ENTRY_FORM = {
@@ -223,7 +224,16 @@ function EntriesModule({ token, userName, isActive }) {
     return product?.unidad_medida || 'kg'
   }
 
+  // La captura por unidades individuales ("unidades pesadas") tiene sentido para materia prima
+  // que realmente se pesa (kg, lb); para insumos medidos en piezas/volumen (Unidades, Litros,
+  // etc.) el mismo mecanismo sigue sirviendo para llevar la cuenta, pero el texto debe hablar de
+  // "cantidad" en vez de "peso" para no confundir al usuario.
+  const WEIGHT_UNIT_LABELS = ['kg', 'kilogramo', 'kilogramos', 'lb', 'lbs', 'libra', 'libras']
+  const isWeightUnit = (unit) => WEIGHT_UNIT_LABELS.includes(String(unit || '').trim().toLowerCase())
+
   const selectedEntryUnit = getProductUnitMeasure(entryForm.id_producto)
+  const selectedEntryIsWeight = isWeightUnit(selectedEntryUnit)
+  const selectedEntryUnitLabel = selectedEntryIsWeight ? 'Peso' : 'Cantidad'
 
   const openEntryModal = () => {
     setEntriesError('')
@@ -634,9 +644,17 @@ function EntriesModule({ token, userName, isActive }) {
       headStyles: { fillColor: [31, 111, 59] },
     })
 
+    const entryUnit = getProductUnitMeasure(entry.id_producto)
+    const entryUnitIsWeight = isWeightUnit(entryUnit)
+
     autoTable(doc, {
       startY: doc.lastAutoTable.finalY + 8,
-      head: [['#', 'Codigo unidad', 'Peso (kg)', 'Fecha pesaje']],
+      head: [[
+        '#',
+        'Codigo unidad',
+        `${entryUnitIsWeight ? 'Peso' : 'Cantidad'} (${entryUnit})`,
+        `Fecha ${entryUnitIsWeight ? 'pesaje' : 'registro'}`,
+      ]],
       body:
         entryUnits.length > 0
           ? entryUnits.map((unit, idx) => [
@@ -791,10 +809,11 @@ function EntriesModule({ token, userName, isActive }) {
               </div>
 
               <div style={{ width: '100%', marginTop: '8px' }}>
-                <h4>Unidades pesadas *</h4>
+                <h4>{selectedEntryIsWeight ? 'Unidades pesadas' : 'Unidades registradas'} *</h4>
                 <p style={{ marginTop: 0, marginBottom: 8 }}>
-                  Añade cada unidad con su peso individual. La cantidad de la entrada se calcula
-                  automaticamente como la suma de los pesos registrados aqui.
+                  {selectedEntryIsWeight
+                    ? 'Añade cada unidad con su peso individual. La cantidad de la entrada se calcula automaticamente como la suma de los pesos registrados aqui.'
+                    : `Añade cada unidad con su cantidad individual (${selectedEntryUnit}). La cantidad de la entrada se calcula automaticamente como la suma de lo registrado aqui.`}
                 </p>
 
                 <div style={{ marginBottom: 8 }}>
@@ -810,8 +829,8 @@ function EntriesModule({ token, userName, isActive }) {
                         <tr>
                           <th>#</th>
                           <th>Código unidad</th>
-                          <th>Peso ({selectedEntryUnit})</th>
-                          <th>Fecha pesaje</th>
+                          <th>{selectedEntryUnitLabel} ({selectedEntryUnit})</th>
+                          <th>Fecha {selectedEntryIsWeight ? 'pesaje' : 'registro'}</th>
                           <th>Acciones</th>
                         </tr>
                       </thead>
@@ -850,7 +869,7 @@ function EntriesModule({ token, userName, isActive }) {
                     </table>
 
                     <p style={{ marginTop: 8 }}>
-                      <strong>Unidades:</strong> {units.length} — <strong>Peso total:</strong>{' '}
+                      <strong>Unidades:</strong> {units.length} — <strong>{selectedEntryUnitLabel} total:</strong>{' '}
                       {unitsTotalWeight.toFixed(3)} {selectedEntryUnit}
                     </p>
                   </div>
@@ -916,6 +935,7 @@ function EntriesModule({ token, userName, isActive }) {
         <table className="providers-table">
           <thead>
             <tr>
+              <th>Codigo</th>
               <th>Fecha</th>
               <th>Proveedor</th>
               <th>Producto</th>
@@ -930,7 +950,7 @@ function EntriesModule({ token, userName, isActive }) {
           <tbody>
             {(viewMode === 'gestion' ? gestionEntries : consultaEntries).length === 0 && !isEntriesLoading ? (
               <tr>
-                <td colSpan={viewMode === 'consultar' ? 9 : 8} className="empty-table-cell">
+                <td colSpan={viewMode === 'consultar' ? 10 : 9} className="empty-table-cell">
                   {viewMode === 'gestion'
                     ? 'No hay entradas pendientes de aceptar en maduracion.'
                     : 'No hay entradas registradas.'}
@@ -950,6 +970,7 @@ function EntriesModule({ token, userName, isActive }) {
 
                 return (
               <tr key={`${entry.id_entrada}-${entry.id_existencia || 'na'}-${index}`}>
+                <td><PhaseCode tipo="entrada" id={entry.id_entrada} code={entry.codigo_lote} /></td>
                 <td>{formatDateTime(entry.fecha_recepcion)}</td>
                 <td>{entry.nombre_empresa || `Proveedor #${entry.id_proveedor}`}</td>
                 <td>{entry.producto_nombre || `Producto #${entry.id_producto}`}</td>
@@ -1056,8 +1077,11 @@ function EntriesModule({ token, userName, isActive }) {
                     <tr>
                       <th>#</th>
                       <th>Código unidad</th>
-                      <th>Peso (kg)</th>
-                      <th>Fecha pesaje</th>
+                      <th>
+                        {isWeightUnit(getProductUnitMeasure(detailEntry.id_producto)) ? 'Peso' : 'Cantidad'} (
+                        {getProductUnitMeasure(detailEntry.id_producto)})
+                      </th>
+                      <th>Fecha {isWeightUnit(getProductUnitMeasure(detailEntry.id_producto)) ? 'pesaje' : 'registro'}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1093,7 +1117,7 @@ function EntriesModule({ token, userName, isActive }) {
 
             <div style={{ marginTop: 8 }}>
               <label style={{ display: 'block', marginBottom: 8 }}>
-                Peso (kg)
+                {selectedEntryUnitLabel} ({selectedEntryUnit})
                 <input
                   type="number"
                   step="0.001"
@@ -1106,7 +1130,7 @@ function EntriesModule({ token, userName, isActive }) {
               </label>
 
               <label style={{ display: 'block', marginBottom: 8 }}>
-                Fecha pesaje
+                Fecha {selectedEntryIsWeight ? 'pesaje' : 'registro'}
                 <input
                   type="datetime-local"
                   className="provider-form-input date-input"

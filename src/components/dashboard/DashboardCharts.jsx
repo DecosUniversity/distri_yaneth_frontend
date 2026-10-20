@@ -436,27 +436,27 @@ function DashboardCharts({ token, showProductionCharts = true, showOrderCharts =
 
         {showOrderCharts ? (
           <ChartCard
-            title="Compras del mes por cliente"
-            subtitle="Cantidad x precio congelado al crear cada pedido, mes en curso"
+            title="Ventas del mes por cliente"
+            subtitle="Valor de los pedidos del mes en curso"
             data={comprasPorCliente}
             nameKey="nombre"
             nameLabel="Cliente"
             valueKey="total"
-            valueLabel="Total compras (Q)"
-            emptyMessage="Aun no hay compras registradas este mes."
+            valueLabel="Total ventas (Q)"
+            emptyMessage="Aun no hay ventas registradas este mes."
           />
         ) : null}
 
         {showOrderCharts ? (
           <ChartCard
-            title="Compras del mes por producto"
-            subtitle="Cantidad x precio congelado al crear cada pedido, mes en curso"
+            title="Ventas del mes por producto"
+            subtitle="Valor de los pedidos del mes en curso"
             data={comprasPorProducto}
             nameKey="nombre"
             nameLabel="Producto"
             valueKey="total"
-            valueLabel="Total compras (Q)"
-            emptyMessage="Aun no hay compras registradas este mes."
+            valueLabel="Total ventas (Q)"
+            emptyMessage="Aun no hay ventas registradas este mes."
           />
         ) : null}
 

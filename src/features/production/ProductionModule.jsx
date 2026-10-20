@@ -11,6 +11,7 @@ import {
   addProductionMermaRequest,
   addProductionStageRequest,
   cancelProductionOrderRequest,
+  createColdRoomTypeRequest,
   createMermaTypeRequest,
   createProductionOrderRequest,
   createProductionProcessRequest,
@@ -19,6 +20,7 @@ import {
   getProductionProcessRequest,
   getProductStageRequirementsRequest,
   getProductividadReportRequest,
+  listColdRoomTypesRequest,
   listMermaTypesRequest,
   listProductionOrdersRequest,
   listProductionProcessesRequest,
@@ -28,6 +30,8 @@ import {
   updateProductionStageRequest,
 } from '../../services/production.service'
 import ReloadButton from '../../components/common/ReloadButton'
+import PhaseCode from '../../components/common/PhaseCode'
+import { formatPhaseCode } from '../../utils/phaseCode'
 import { notifyError, notifySuccess } from '../../utils/toast'
 
 const FINISHED_PRODUCT_TYPE = 'Producto Terminado'
@@ -125,24 +129,25 @@ const EMPTY_INPUT_FORM = {
   id_producto: '',
   id_etapa: '',
   cantidad: '',
-  unidad_medida: 'Unidad',
   observaciones: '',
 }
 
 const EMPTY_COLD_ROOM_FORM = {
   fecha_ingreso: '',
-  ubicacion_cuarto: '',
+  id_cuarto_frio: '',
   cantidad_kg: '',
   observaciones: '',
+}
+
+const EMPTY_COLD_ROOM_TYPE_FORM = {
+  nombre_cuarto: '',
+  descripcion: '',
 }
 
 const EMPTY_FINALIZE_FORM = {
   cantidad_producida_kg: '',
   fecha_fin: '',
   fecha_vencimiento: '',
-  cuarto_congelado: '',
-  ubicacion_cuarto_congelado: '',
-  costo_unitario: '',
   observaciones: '',
   justificacion_diferencia: '',
 }
@@ -158,6 +163,26 @@ const formatNumber = (value) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(value))
+}
+
+// Las etapas se registran en el orden en que el usuario las va trabajando, que no siempre
+// coincide con la ruta de produccion sugerida para el producto (ej. se puede registrar "Corte"
+// antes que "Pelado" por error de captura). Para que la tabla sea legible se muestran en el
+// orden del plan del producto; una etapa repetida o que ya no forma parte del plan (producto
+// legado sin plan, o tipo de etapa editado despues) cae al final, en orden cronologico.
+const sortStagesByProductPlan = (etapas, requiredStages) => {
+  const planOrderByStageType = new Map((requiredStages || []).map((req) => [req.id_tipo_etapa, req.orden]))
+
+  return [...(etapas || [])].sort((a, b) => {
+    const orderA = planOrderByStageType.get(a.id_tipo_etapa) ?? Number.MAX_SAFE_INTEGER
+    const orderB = planOrderByStageType.get(b.id_tipo_etapa) ?? Number.MAX_SAFE_INTEGER
+
+    if (orderA !== orderB) {
+      return orderA - orderB
+    }
+
+    return new Date(a.fecha_inicio || 0) - new Date(b.fecha_inicio || 0)
+  })
 }
 
 const formatMonthInputValue = (value) => {
@@ -207,6 +232,7 @@ function ProductionModule({ token, isActive, roleName }) {
   const [sublots, setSublots] = useState([])
   const [products, setProducts] = useState([])
   const [mermaTypes, setMermaTypes] = useState([])
+  const [coldRoomTypes, setColdRoomTypes] = useState([])
   const [stageTypes, setStageTypes] = useState([])
   const [productionOrders, setProductionOrders] = useState([])
   const [processForm, setProcessForm] = useState(EMPTY_PROCESS_FORM)
@@ -249,6 +275,9 @@ function ProductionModule({ token, isActive, roleName }) {
   const [isSubmittingStageType, setIsSubmittingStageType] = useState(false)
   const [insumoForm, setInsumoForm] = useState(EMPTY_INPUT_FORM)
   const [coldRoomForm, setColdRoomForm] = useState(EMPTY_COLD_ROOM_FORM)
+  const [coldRoomTypeModalOpen, setColdRoomTypeModalOpen] = useState(false)
+  const [coldRoomTypeForm, setColdRoomTypeForm] = useState(EMPTY_COLD_ROOM_TYPE_FORM)
+  const [isSubmittingColdRoomType, setIsSubmittingColdRoomType] = useState(false)
   const [finalizeForm, setFinalizeForm] = useState(EMPTY_FINALIZE_FORM)
   const [productionOrderForm, setProductionOrderForm] = useState(EMPTY_PRODUCTION_ORDER_FORM)
   const [productionOrderFormOpen, setProductionOrderFormOpen] = useState(false)
@@ -283,22 +312,32 @@ function ProductionModule({ token, isActive, roleName }) {
     setIsLoading(true)
 
     try {
-      const [processesData, sublotsData, allSublotsData, productsData, mermaTypesData, stageTypesData, productionOrdersData] =
-        await Promise.all([
-          listProductionProcessesRequest(token),
-          listReadyForProductionRequest(token),
-          listSublotsRequest(token),
-          listProductsRequest(token),
-          listMermaTypesRequest(token),
-          listStageTypesRequest(token),
-          listProductionOrdersRequest(token),
-        ])
+      const [
+        processesData,
+        sublotsData,
+        allSublotsData,
+        productsData,
+        mermaTypesData,
+        coldRoomTypesData,
+        stageTypesData,
+        productionOrdersData,
+      ] = await Promise.all([
+        listProductionProcessesRequest(token),
+        listReadyForProductionRequest(token),
+        listSublotsRequest(token),
+        listProductsRequest(token),
+        listMermaTypesRequest(token),
+        listColdRoomTypesRequest(token),
+        listStageTypesRequest(token),
+        listProductionOrdersRequest(token),
+      ])
 
       setProcesses(Array.isArray(processesData) ? processesData : [])
       setSublots(Array.isArray(sublotsData) ? sublotsData : [])
       setAllSublots(Array.isArray(allSublotsData) ? allSublotsData : [])
       setProducts(Array.isArray(productsData) ? productsData : [])
       setMermaTypes(Array.isArray(mermaTypesData) ? mermaTypesData : [])
+      setColdRoomTypes(Array.isArray(coldRoomTypesData) ? coldRoomTypesData : [])
       setStageTypes(Array.isArray(stageTypesData) ? stageTypesData : [])
       setProductionOrders(Array.isArray(productionOrdersData) ? productionOrdersData : [])
     } catch (error) {
@@ -388,6 +427,12 @@ function ProductionModule({ token, isActive, roleName }) {
     (product) => String(product.tipo_producto || '').trim() === INSUMO_PRODUCT_TYPE
   )
 
+  // La unidad de medida ya la define el producto de tipo Insumo: no tiene sentido volver a
+  // pedirla al capturar el consumo, se toma directo del catalogo.
+  const selectedInsumoProduct = insumoProducts.find(
+    (product) => String(product.id_producto) === String(insumoForm.id_producto)
+  )
+
   const selectedSublotForForm = sublots.find(
     (sublot) => String(sublot.id_sublote) === String(processForm.id_sublote)
   )
@@ -418,11 +463,22 @@ function ProductionModule({ token, isActive, roleName }) {
 
   // Si el producto del proceso tiene un plan de etapas definido, solo se puede registrar/editar
   // una etapa que forme parte de ese plan (no se permite "usar procesos diferentes" a los
-  // planificados). Un producto sin plan (legado) no se restringe.
+  // planificados). Un producto sin plan (legado) no se restringe. Ademas, dentro del plan solo
+  // se ofrecen las etapas cuyas etapas previas ya se registraron (el backend aplica esta misma
+  // regla en productionProcesses.addStage), para no dejar elegir "Corte" antes que "Pelado".
   const requiredStageTypeIds = new Set(detailRequiredStages.map((item) => item.id_tipo_etapa))
+  const recordedStageTypeIds = new Set((selectedProcess?.etapas || []).map((stage) => stage.id_tipo_etapa))
+  const orderedRequiredStages = [...detailRequiredStages].sort((a, b) => a.orden - b.orden)
+  const nextAllowedStageTypeIds = new Set(
+    orderedRequiredStages
+      .filter((_requirement, index) =>
+        orderedRequiredStages.slice(0, index).every((prior) => recordedStageTypeIds.has(prior.id_tipo_etapa))
+      )
+      .map((requirement) => requirement.id_tipo_etapa)
+  )
   const stageTypesForCurrentProcess =
     requiredStageTypeIds.size > 0
-      ? stageTypes.filter((stageType) => requiredStageTypeIds.has(stageType.id_tipo_etapa))
+      ? stageTypes.filter((stageType) => nextAllowedStageTypeIds.has(stageType.id_tipo_etapa))
       : stageTypes
 
   const handleProcessSubmit = async (event) => {
@@ -804,6 +860,11 @@ function ProductionModule({ token, isActive, roleName }) {
   const finalizeNeedsJustification =
     finalizeForm.cantidad_producida_kg !== '' && Math.abs(finalizeDifferenceKg) > BALANCE_TOLERANCE_KG
 
+  const finalizeResultProduct = selectedProcess
+    ? products.find((product) => product.id_producto === selectedProcess.id_producto_resultado)
+    : null
+  const finalizeColdRoomEntries = selectedProcess?.cuartos_frio || []
+
   const handleStageFieldChange = (event) => {
     const { name, value } = event.target
     setStageForm((previous) => ({ ...previous, [name]: value }))
@@ -958,6 +1019,53 @@ function ProductionModule({ token, isActive, roleName }) {
       notifyError(message)
     } finally {
       setIsSubmittingMermaType(false)
+    }
+  }
+
+  const openColdRoomTypeModal = () => {
+    setColdRoomTypeForm(EMPTY_COLD_ROOM_TYPE_FORM)
+    setDetailError('')
+    setColdRoomTypeModalOpen(true)
+  }
+
+  const closeColdRoomTypeModal = () => {
+    if (isSubmittingColdRoomType) {
+      return
+    }
+
+    setColdRoomTypeModalOpen(false)
+  }
+
+  const handleColdRoomTypeFieldChange = (event) => {
+    const { name, value } = event.target
+    setColdRoomTypeForm((previous) => ({ ...previous, [name]: value }))
+  }
+
+  const handleColdRoomTypeSubmit = async (event) => {
+    event.preventDefault()
+    setDetailError('')
+    setIsSubmittingColdRoomType(true)
+
+    try {
+      const newColdRoomType = await createColdRoomTypeRequest(
+        {
+          nombre_cuarto: coldRoomTypeForm.nombre_cuarto.trim(),
+          descripcion: emptyToUndefined(coldRoomTypeForm.descripcion.trim()),
+        },
+        token
+      )
+
+      const updatedTypes = await listColdRoomTypesRequest(token)
+      setColdRoomTypes(Array.isArray(updatedTypes) ? updatedTypes : [])
+      setColdRoomForm((previous) => ({ ...previous, id_cuarto_frio: String(newColdRoomType.id_cuarto_frio) }))
+      setColdRoomTypeModalOpen(false)
+      notifySuccess('Cuarto frio creado correctamente')
+    } catch (error) {
+      const message = error.message || 'No se pudo registrar el cuarto frio'
+      setDetailError(message)
+      notifyError(message)
+    } finally {
+      setIsSubmittingColdRoomType(false)
     }
   }
 
@@ -1178,11 +1286,12 @@ function ProductionModule({ token, isActive, roleName }) {
     setIsSubmittingDetail(true)
 
     try {
+      const product = insumoProducts.find((item) => String(item.id_producto) === String(insumoForm.id_producto))
       const payload = {
         id_producto: Number(insumoForm.id_producto),
         id_etapa: emptyToUndefined(insumoForm.id_etapa),
         cantidad: Number(insumoForm.cantidad),
-        unidad_medida: insumoForm.unidad_medida.trim(),
+        unidad_medida: product?.unidad_medida || '',
         observaciones: emptyToUndefined(insumoForm.observaciones.trim()),
       }
 
@@ -1215,7 +1324,7 @@ function ProductionModule({ token, isActive, roleName }) {
     try {
       const payload = {
         fecha_ingreso: coldRoomForm.fecha_ingreso,
-        ubicacion_cuarto: coldRoomForm.ubicacion_cuarto.trim(),
+        id_cuarto_frio: Number(coldRoomForm.id_cuarto_frio),
         cantidad_kg: Number(coldRoomForm.cantidad_kg),
         observaciones: emptyToUndefined(coldRoomForm.observaciones.trim()),
       }
@@ -1258,10 +1367,7 @@ function ProductionModule({ token, isActive, roleName }) {
         cantidad_producida_kg: Number(finalizeForm.cantidad_producida_kg),
         fecha_fin: finalizeForm.fecha_fin,
         fecha_vencimiento: finalizeForm.fecha_vencimiento,
-        cuarto_congelado: emptyToUndefined(finalizeForm.cuarto_congelado.trim()),
-        ubicacion_cuarto_congelado: emptyToUndefined(finalizeForm.ubicacion_cuarto_congelado.trim()),
         observaciones: emptyToUndefined(finalizeForm.observaciones.trim()),
-        costo_unitario: emptyToUndefined(finalizeForm.costo_unitario),
         justificacion_diferencia: emptyToUndefined(finalizeForm.justificacion_diferencia.trim()),
       }
 
@@ -1532,7 +1638,7 @@ function ProductionModule({ token, isActive, roleName }) {
               <option value="">Selecciona sub-lote</option>
               {availableSublots.map((sublot) => (
                 <option key={sublot.id_sublote} value={sublot.id_sublote}>
-                  {`#${sublot.id_sublote} (${sublot.codigo_sublote}) - ${sublot.producto_nombre || `Producto ${sublot.id_producto}`} (disponible ${formatNumber(sublot.peso_kg)} kg)`}
+                  {`${formatPhaseCode('sublote', sublot.id_sublote)} (${sublot.codigo_sublote}) - ${sublot.producto_nombre || `Producto ${sublot.id_producto}`} (disponible ${formatNumber(sublot.peso_kg)} kg)`}
                 </option>
               ))}
             </select>
@@ -1656,7 +1762,7 @@ function ProductionModule({ token, isActive, roleName }) {
               <option value="">Selecciona sub-lote</option>
               {greenAvailableSublots.map((sublot) => (
                 <option key={sublot.id_sublote} value={sublot.id_sublote}>
-                  {`#${sublot.id_sublote} (${sublot.codigo_sublote}) - ${sublot.producto_nombre || `Producto ${sublot.id_producto}`} (disponible ${formatNumber(sublot.peso_kg)} kg)`}
+                  {`${formatPhaseCode('sublote', sublot.id_sublote)} (${sublot.codigo_sublote}) - ${sublot.producto_nombre || `Producto ${sublot.id_producto}`} (disponible ${formatNumber(sublot.peso_kg)} kg)`}
                 </option>
               ))}
             </select>
@@ -1967,10 +2073,10 @@ function ProductionModule({ token, isActive, roleName }) {
 
             {filteredProcesses.map((process) => (
               <tr key={process.id_proceso}>
-                <td>#{process.id_proceso}</td>
+                <td><PhaseCode tipo="proceso" id={process.id_proceso} /></td>
                 <td>{process.id_orden ? `#${process.id_orden}` : '-'}</td>
                 <td>
-                  #{process.id_sublote} ({process.codigo_sublote})
+                  <PhaseCode tipo="sublote" id={process.id_sublote} /> ({process.codigo_sublote})
                 </td>
                 <td>{process.producto_resultado_nombre || `Producto #${process.id_producto_resultado}`}</td>
                 <td>{formatNumber(process.cantidad_ingresada_kg)}</td>
@@ -2387,10 +2493,10 @@ function ProductionModule({ token, isActive, roleName }) {
                   Agregar etapa
                 </button>
                 <button type="button" className="secondary-button" onClick={() => openAction('merma')}>
-                  Agregar merma
+                  Registrar merma
                 </button>
                 <button type="button" className="secondary-button" onClick={() => openAction('insumo')}>
-                  Agregar insumo
+                  Registrar insumo
                 </button>
                 <button type="button" className="secondary-button" onClick={() => openAction('coldRoom')}>
                   Registrar cuarto frio
@@ -2412,7 +2518,7 @@ function ProductionModule({ token, isActive, roleName }) {
               <>
                 <div className="maturation-section-divider" aria-hidden="true" />
                 <h4>Etapas requeridas para este producto</h4>
-                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none' }}>
                   {detailRequiredStages.map((requirement) => {
                     const isDone = (selectedProcess.etapas || []).some(
                       (stage) => stage.id_tipo_etapa === requirement.id_tipo_etapa
@@ -2454,7 +2560,7 @@ function ProductionModule({ token, isActive, roleName }) {
                       </td>
                     </tr>
                   ) : null}
-                  {(selectedProcess.etapas || []).map((stage) => (
+                  {sortStagesByProductPlan(selectedProcess.etapas, detailRequiredStages).map((stage) => (
                     <tr key={stage.id_etapa}>
                       <td>
                         {stage.nombre_etapa}
@@ -2487,7 +2593,7 @@ function ProductionModule({ token, isActive, roleName }) {
                               Editar
                             </button>
                             <button type="button" className="secondary-button" onClick={() => openMermaForStage(stage)}>
-                              Agregar merma
+                              Registrar merma
                             </button>
                           </>
                         ) : null}
@@ -2947,7 +3053,7 @@ function ProductionModule({ token, isActive, roleName }) {
           <div className="modal-card entry-modal-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
               <div>
-                <h4 style={{ marginBottom: 4 }}>Agregar merma · Proceso #{selectedProcess.id_proceso}</h4>
+                <h4 style={{ marginBottom: 4 }}>Registrar merma · Proceso #{selectedProcess.id_proceso}</h4>
               </div>
               <button type="button" className="secondary-button" onClick={closeAction}>
                 Cerrar
@@ -3068,7 +3174,7 @@ function ProductionModule({ token, isActive, roleName }) {
           <div className="modal-card entry-modal-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
               <div>
-                <h4 style={{ marginBottom: 4 }}>Agregar insumo · Proceso #{selectedProcess.id_proceso}</h4>
+                <h4 style={{ marginBottom: 4 }}>Registrar insumo · Proceso #{selectedProcess.id_proceso}</h4>
               </div>
               <button type="button" className="secondary-button" onClick={closeAction}>
                 Cerrar
@@ -3118,18 +3224,6 @@ function ProductionModule({ token, isActive, roleName }) {
                 </label>
 
                 <label>
-                  Unidad de medida *
-                  <input
-                    name="unidad_medida"
-                    type="text"
-                    value={insumoForm.unidad_medida}
-                    onChange={handleInsumoFieldChange}
-                    placeholder="Litros, unidades, etc."
-                    required
-                  />
-                </label>
-
-                <label>
                   Observaciones
                   <input
                     name="observaciones"
@@ -3140,6 +3234,10 @@ function ProductionModule({ token, isActive, roleName }) {
                   />
                 </label>
               </div>
+
+              {selectedInsumoProduct ? (
+                <p className="widget-muted">Se registrara en {selectedInsumoProduct.unidad_medida || 'la unidad del producto'}.</p>
+              ) : null}
 
               <div className="provider-form-actions">
                 <button type="submit" disabled={isSubmittingDetail}>
@@ -3180,14 +3278,59 @@ function ProductionModule({ token, isActive, roleName }) {
 
                 <label>
                   Ubicacion cuarto *
-                  <input
-                    name="ubicacion_cuarto"
-                    type="text"
-                    value={coldRoomForm.ubicacion_cuarto}
-                    onChange={handleColdRoomFieldChange}
-                    placeholder="Cuarto frio 1"
-                    required
-                  />
+                  <select name="id_cuarto_frio" value={coldRoomForm.id_cuarto_frio} onChange={handleColdRoomFieldChange} required>
+                    <option value="">Selecciona cuarto frio</option>
+                    {coldRoomTypes.map((coldRoomType) => (
+                      <option key={coldRoomType.id_cuarto_frio} value={coldRoomType.id_cuarto_frio}>
+                        {coldRoomType.nombre_cuarto}
+                      </option>
+                    ))}
+                  </select>
+                  {coldRoomTypes.length === 0 ? (
+                    <small>Aun no hay cuartos frios registrados.</small>
+                  ) : null}
+                  {!coldRoomTypeModalOpen ? (
+                    <button type="button" className="secondary-button" style={{ marginTop: 6 }} onClick={openColdRoomTypeModal}>
+                      + Nuevo cuarto frio
+                    </button>
+                  ) : (
+                    <div className="maturation-filter-panel" style={{ marginTop: 8 }}>
+                      <p style={{ marginTop: 0, marginBottom: 8, fontWeight: 600 }}>Nuevo cuarto frio</p>
+                      <div className="provider-form-grid">
+                        <label>
+                          Nombre *
+                          <input
+                            name="nombre_cuarto"
+                            type="text"
+                            maxLength={100}
+                            value={coldRoomTypeForm.nombre_cuarto}
+                            onChange={handleColdRoomTypeFieldChange}
+                            placeholder="Ej. Cuarto frio 1"
+                            required
+                          />
+                        </label>
+                        <label>
+                          Descripcion
+                          <input
+                            name="descripcion"
+                            type="text"
+                            maxLength={150}
+                            value={coldRoomTypeForm.descripcion}
+                            onChange={handleColdRoomTypeFieldChange}
+                            placeholder="Opcional"
+                          />
+                        </label>
+                      </div>
+                      <div className="provider-form-actions">
+                        <button type="button" onClick={handleColdRoomTypeSubmit} disabled={isSubmittingColdRoomType}>
+                          {isSubmittingColdRoomType ? 'Guardando...' : 'Guardar cuarto frio'}
+                        </button>
+                        <button type="button" className="secondary-button" onClick={closeColdRoomTypeModal}>
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </label>
 
                 <label>
@@ -3294,41 +3437,6 @@ function ProductionModule({ token, isActive, roleName }) {
                 </label>
 
                 <label>
-                  Costo unitario
-                  <input
-                    name="costo_unitario"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={finalizeForm.costo_unitario}
-                    onChange={handleFinalizeFieldChange}
-                    placeholder="0.00"
-                  />
-                </label>
-
-                <label>
-                  Cuarto de congelado
-                  <input
-                    name="cuarto_congelado"
-                    type="text"
-                    value={finalizeForm.cuarto_congelado}
-                    onChange={handleFinalizeFieldChange}
-                    placeholder="Opcional"
-                  />
-                </label>
-
-                <label>
-                  Ubicacion cuarto congelado
-                  <input
-                    name="ubicacion_cuarto_congelado"
-                    type="text"
-                    value={finalizeForm.ubicacion_cuarto_congelado}
-                    onChange={handleFinalizeFieldChange}
-                    placeholder="Opcional"
-                  />
-                </label>
-
-                <label>
                   Observaciones
                   <input
                     name="observaciones"
@@ -3353,6 +3461,32 @@ function ProductionModule({ token, isActive, roleName }) {
                   </label>
                 ) : null}
               </div>
+
+              <p className="widget-muted" style={{ marginTop: 4 }}>
+                {finalizeResultProduct
+                  ? `El costo del lote se tomara del precio de venta sugerido de ${finalizeResultProduct.nombre}: ${formatNumber(finalizeResultProduct.precio_venta_sugerido)}.`
+                  : 'El costo del lote se tomara del precio de venta sugerido ya definido para el producto.'}
+              </p>
+
+              {finalizeColdRoomEntries.length > 0 ? (
+                <p className="widget-muted" style={{ marginTop: 4 }}>
+                  Cuarto frio: {finalizeColdRoomEntries.map((entry) => `${entry.ubicacion_cuarto} (${formatNumber(entry.cantidad_kg)} kg)`).join(', ')}
+                </p>
+              ) : (
+                <p className="widget-muted" style={{ marginTop: 4 }}>
+                  No hay ingresos a cuarto frio registrados para este proceso. Si este lote necesita refrigeracion,
+                  usa{' '}
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    style={{ padding: '2px 8px', fontSize: '0.85em' }}
+                    onClick={() => openAction('coldRoom')}
+                  >
+                    Registrar cuarto frio
+                  </button>{' '}
+                  antes de finalizar.
+                </p>
+              )}
 
               <div className="provider-form-actions">
                 <button type="submit" disabled={isSubmittingDetail}>

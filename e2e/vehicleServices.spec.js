@@ -7,11 +7,8 @@ const successMessage = (page, text) => page.locator('p.feedback.success', { hasT
 test.describe('Modulo Servicios de Vehiculo - CRUD', () => {
   test.use({ storageState: authFile('Administrador') })
 
-  test('crea, edita y elimina un servicio de vehiculo', async ({ page }) => {
-    page.on('dialog', (dialog) => dialog.accept())
-
+  test('crea un servicio de vehiculo y no permite editarlo ni eliminarlo', async ({ page }) => {
     const notas = `E2E nota ${Date.now().toString(36)}`
-    const editedNotas = `${notas} editado`
 
     await page.goto('/')
     await goToModule(page, 'Servicios Vehiculo')
@@ -35,20 +32,8 @@ test.describe('Modulo Servicios de Vehiculo - CRUD', () => {
     await expect(row).toBeVisible()
     await expect(row).toContainText('150.50')
 
-    // Editar
-    await row.getByRole('button', { name: 'Editar' }).click()
-    await page.getByLabel('Costo del servicio').fill('200')
-    await page.getByLabel('Notas').fill(editedNotas)
-    await page.getByRole('button', { name: 'Actualizar servicio' }).click()
-    await expect(successMessage(page, 'Servicio de vehiculo actualizado correctamente')).toBeVisible()
-
-    const editedRow = listSection.getByRole('row', { name: new RegExp(editedNotas) })
-    await expect(editedRow).toBeVisible()
-    await expect(editedRow).toContainText('200.00')
-
-    // Eliminar
-    await editedRow.getByRole('button', { name: 'Eliminar' }).click()
-    await expect(successMessage(page, 'Servicio de vehiculo eliminado correctamente')).toBeVisible()
-    await expect(listSection.getByRole('row', { name: new RegExp(editedNotas) })).toHaveCount(0)
+    // Un servicio registrado no se puede editar ni eliminar (acciones ocultas)
+    await expect(row.getByRole('button', { name: 'Editar' })).toHaveCount(0)
+    await expect(row.getByRole('button', { name: 'Eliminar' })).toHaveCount(0)
   })
 })

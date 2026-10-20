@@ -167,6 +167,7 @@ function DashboardPage({ onLogout, session }) {
               showInventoryCharts={canUseInventory}
               token={session.token}
               roleName={roleName}
+              userId={session.user?.id_usuario}
             />
           )}
         </div>
