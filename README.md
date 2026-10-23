@@ -1,16 +1,50 @@
-# React + Vite
+# Frontend — Sistema Integral de Producción y Distribución (Distribuidora Yaneth)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Cliente web en React 19 + Vite 8 (React Router, Recharts, jsPDF, ExcelJS, SweetAlert2).
+Consume la API del [backend](https://github.com/DecosUniversity/distri_yaneth_backend); la
+instalación completa está en el Manual Técnico del backend (`docs/A_Manual_Tecnico/`).
 
-Currently, two official plugins are available:
+## Requisitos
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Node.js 22 LTS (mínimo 20.19; Vite 8 no funciona con Node 18).
+- El backend corriendo (por defecto en `http://localhost:3000`).
 
-## React Compiler
+## Desarrollo local
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+npm install
+cp .env.example .env.local    # VITE_API_URL=http://localhost:3000
+npm run dev                   # http://localhost:5173
+```
 
-## Expanding the ESLint configuration
+Vite escucha en todas las interfaces: para probar desde un teléfono de la misma red use
+`http://<IP-del-equipo>:5173` y ponga `VITE_API_URL=http://<IP-del-equipo>:3000`.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### Scripts
+
+- `npm run dev`: servidor de desarrollo.
+- `npm run build`: compila a `dist/`.
+- `npm run preview`: sirve `dist/` localmente.
+- `npm run lint`: ESLint.
+- `npm run test:e2e`: pruebas Playwright (ver [e2e/README.md](e2e/README.md)).
+
+## Producción
+
+El frontend se compila a archivos estáticos que entrega **Nginx** en el servidor de aplicación;
+Nginx reenvía `/api` a la API del mismo servidor. `VITE_API_URL` es el dominio del sistema (sin
+`/api` y sin puerto) y se incrusta al compilar: si cambia, hay que recompilar.
+
+```bash
+cd /opt/yaneth-sistema/Frontend
+echo "VITE_API_URL=https://<dominio-del-sistema>" > .env.production
+npm ci
+npm run build
+sudo mkdir -p /var/www/yaneth && sudo cp -r dist/* /var/www/yaneth/
+```
+
+Notas:
+
+- No copie `.env.local` al servidor: tiene prioridad sobre `.env.production`.
+- Si `VITE_API_URL` queda vacía, el cliente usa `http://localhost:3000`.
+- La app usa rutas del navegador (`BrowserRouter`): Nginx debe tener
+  `try_files $uri $uri/ /index.html;` en `location /`, o recargar una pantalla interna da 404.
