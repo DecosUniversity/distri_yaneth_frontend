@@ -1,0 +1,28 @@
+DATOS SINTÉTICOS — DISTRIBUIDORA YANETH — FASE 2 STLC
+
+Uso exclusivo: ambiente QA/staging AISLADO de producción.
+Todos los registros son inventados y deterministas (semilla 20261008).
+Los identificadores, clientes, NIT y correos son ficticios.
+
+Contenido:
+- usuarios.csv: 120 filas
+- clientes.csv: 200 filas
+- vehiculos.csv: 40 filas
+- pilotos.csv: 30 filas
+- lotes.csv: 150 filas
+- cajas.csv: 600 filas
+- sublotes.csv: 150 filas
+- produccion.csv: 150 filas
+- mermas.csv: 150 filas
+- rutas.csv: 100 filas
+- devoluciones.csv: 25 filas
+- escenarios_controlados.json: datos específicos y variantes Pairwise
+- ejemplo_carga_qa.sql: tablas auxiliares de ejemplo para MySQL 8 (lotes/cajas)
+
+ADVERTENCIAS:
+1. CSV/JSON son insumos; NO equivalen a datos ya cargados ni pruebas ejecutadas.
+2. La estructura real de BD debe revisarse antes de diseñar scripts de importación.
+3. Los nombres de estado y reglas ambiguas requieren aprobación del equipo.
+4. Usuarios no incluyen contraseñas funcionales ni hashes válidos. Preparar cuentas QA mediante el flujo oficial de autenticación.
+5. No ejecutar SQL contra producción. Usar base de datos QA separada.
+6. Datos de los escenarios_controlados.json son fixtures conceptuales; no todos corresponden a filas del CSV.

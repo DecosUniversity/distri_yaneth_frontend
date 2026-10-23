@@ -1,0 +1,75 @@
+{
+  "REQ001": {
+    "correo": "admin.qa@example.com",
+    "contrasena": "QaSegura123",
+    "nota": "Crear usuario manualmente en autenticacion QA; no hay claves reales en CSV"
+  },
+  "REQ002": {
+    "peso_bruto_kg": 25,
+    "tara_kg": 2,
+    "neto_kg": 23,
+    "brix": [
+      21,
+      22,
+      23
+    ],
+    "umbral": 22
+  },
+  "REQ003": {
+    "entrada_kg": 100,
+    "merma_kg": 15,
+    "producido_kg": 85
+  },
+  "REQ004": {
+    "km_salida": 15000,
+    "km_llegada": 15125,
+    "recorrido": 125
+  },
+  "REQ005": {
+    "registros": [
+      {
+        "id": "PROD-R01",
+        "fecha": "2026-10-03",
+        "kg": 100
+      },
+      {
+        "id": "PROD-R02",
+        "fecha": "2026-10-05",
+        "kg": 50
+      },
+      {
+        "id": "PROD-R03",
+        "fecha": "2026-10-09",
+        "kg": 75
+      }
+    ],
+    "periodo": "2026-10-01/2026-10-07",
+    "total_periodo_kg": 150
+  },
+  "pairwise": [
+    {
+      "variante": "PW-01",
+      "fecha": "2026-10-01/2026-10-07",
+      "cliente": "CLI-QA-01",
+      "merma": "Pelado"
+    },
+    {
+      "variante": "PW-02",
+      "fecha": "2026-10-01/2026-10-07",
+      "cliente": "CLI-QA-02",
+      "merma": "Corte"
+    },
+    {
+      "variante": "PW-03",
+      "fecha": "2026-10-08/2026-10-14",
+      "cliente": "CLI-QA-01",
+      "merma": "Corte"
+    },
+    {
+      "variante": "PW-04",
+      "fecha": "2026-10-08/2026-10-14",
+      "cliente": "CLI-QA-02",
+      "merma": "Pelado"
+    }
+  ]
+}

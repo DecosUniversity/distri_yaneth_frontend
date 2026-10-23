@@ -1,0 +1,151 @@
+﻿sublote_id,lote_id,brix,umbral_brix,estado_propuesto
+SUB-QA-0001,LOT-QA-0001,20,22,En Maduración
+SUB-QA-0002,LOT-QA-0002,21,22,En Maduración
+SUB-QA-0003,LOT-QA-0003,22,22,Listo para Producción
+SUB-QA-0004,LOT-QA-0004,23,22,Listo para Producción
+SUB-QA-0005,LOT-QA-0005,24,22,Listo para Producción
+SUB-QA-0006,LOT-QA-0006,20,22,En Maduración
+SUB-QA-0007,LOT-QA-0007,21,22,En Maduración
+SUB-QA-0008,LOT-QA-0008,22,22,Listo para Producción
+SUB-QA-0009,LOT-QA-0009,23,22,Listo para Producción
+SUB-QA-0010,LOT-QA-0010,24,22,Listo para Producción
+SUB-QA-0011,LOT-QA-0011,20,22,En Maduración
+SUB-QA-0012,LOT-QA-0012,21,22,En Maduración
+SUB-QA-0013,LOT-QA-0013,22,22,Listo para Producción
+SUB-QA-0014,LOT-QA-0014,23,22,Listo para Producción
+SUB-QA-0015,LOT-QA-0015,24,22,Listo para Producción
+SUB-QA-0016,LOT-QA-0016,20,22,En Maduración
+SUB-QA-0017,LOT-QA-0017,21,22,En Maduración
+SUB-QA-0018,LOT-QA-0018,22,22,Listo para Producción
+SUB-QA-0019,LOT-QA-0019,23,22,Listo para Producción
+SUB-QA-0020,LOT-QA-0020,24,22,Listo para Producción
+SUB-QA-0021,LOT-QA-0021,20,22,En Maduración
+SUB-QA-0022,LOT-QA-0022,21,22,En Maduración
+SUB-QA-0023,LOT-QA-0023,22,22,Listo para Producción
+SUB-QA-0024,LOT-QA-0024,23,22,Listo para Producción
+SUB-QA-0025,LOT-QA-0025,24,22,Listo para Producción
+SUB-QA-0026,LOT-QA-0026,20,22,En Maduración
+SUB-QA-0027,LOT-QA-0027,21,22,En Maduración
+SUB-QA-0028,LOT-QA-0028,22,22,Listo para Producción
+SUB-QA-0029,LOT-QA-0029,23,22,Listo para Producción
+SUB-QA-0030,LOT-QA-0030,24,22,Listo para Producción
+SUB-QA-0031,LOT-QA-0031,20,22,En Maduración
+SUB-QA-0032,LOT-QA-0032,21,22,En Maduración
+SUB-QA-0033,LOT-QA-0033,22,22,Listo para Producción
+SUB-QA-0034,LOT-QA-0034,23,22,Listo para Producción
+SUB-QA-0035,LOT-QA-0035,24,22,Listo para Producción
+SUB-QA-0036,LOT-QA-0036,20,22,En Maduración
+SUB-QA-0037,LOT-QA-0037,21,22,En Maduración
+SUB-QA-0038,LOT-QA-0038,22,22,Listo para Producción
+SUB-QA-0039,LOT-QA-0039,23,22,Listo para Producción
+SUB-QA-0040,LOT-QA-0040,24,22,Listo para Producción
+SUB-QA-0041,LOT-QA-0041,20,22,En Maduración
+SUB-QA-0042,LOT-QA-0042,21,22,En Maduración
+SUB-QA-0043,LOT-QA-0043,22,22,Listo para Producción
+SUB-QA-0044,LOT-QA-0044,23,22,Listo para Producción
+SUB-QA-0045,LOT-QA-0045,24,22,Listo para Producción
+SUB-QA-0046,LOT-QA-0046,20,22,En Maduración
+SUB-QA-0047,LOT-QA-0047,21,22,En Maduración
+SUB-QA-0048,LOT-QA-0048,22,22,Listo para Producción
+SUB-QA-0049,LOT-QA-0049,23,22,Listo para Producción
+SUB-QA-0050,LOT-QA-0050,24,22,Listo para Producción
+SUB-QA-0051,LOT-QA-0051,20,22,En Maduración
+SUB-QA-0052,LOT-QA-0052,21,22,En Maduración
+SUB-QA-0053,LOT-QA-0053,22,22,Listo para Producción
+SUB-QA-0054,LOT-QA-0054,23,22,Listo para Producción
+SUB-QA-0055,LOT-QA-0055,24,22,Listo para Producción
+SUB-QA-0056,LOT-QA-0056,20,22,En Maduración
+SUB-QA-0057,LOT-QA-0057,21,22,En Maduración
+SUB-QA-0058,LOT-QA-0058,22,22,Listo para Producción
+SUB-QA-0059,LOT-QA-0059,23,22,Listo para Producción
+SUB-QA-0060,LOT-QA-0060,24,22,Listo para Producción
+SUB-QA-0061,LOT-QA-0061,20,22,En Maduración
+SUB-QA-0062,LOT-QA-0062,21,22,En Maduración
+SUB-QA-0063,LOT-QA-0063,22,22,Listo para Producción
+SUB-QA-0064,LOT-QA-0064,23,22,Listo para Producción
+SUB-QA-0065,LOT-QA-0065,24,22,Listo para Producción
+SUB-QA-0066,LOT-QA-0066,20,22,En Maduración
+SUB-QA-0067,LOT-QA-0067,21,22,En Maduración
+SUB-QA-0068,LOT-QA-0068,22,22,Listo para Producción
+SUB-QA-0069,LOT-QA-0069,23,22,Listo para Producción
+SUB-QA-0070,LOT-QA-0070,24,22,Listo para Producción
+SUB-QA-0071,LOT-QA-0071,20,22,En Maduración
+SUB-QA-0072,LOT-QA-0072,21,22,En Maduración
+SUB-QA-0073,LOT-QA-0073,22,22,Listo para Producción
+SUB-QA-0074,LOT-QA-0074,23,22,Listo para Producción
+SUB-QA-0075,LOT-QA-0075,24,22,Listo para Producción
+SUB-QA-0076,LOT-QA-0076,20,22,En Maduración
+SUB-QA-0077,LOT-QA-0077,21,22,En Maduración
+SUB-QA-0078,LOT-QA-0078,22,22,Listo para Producción
+SUB-QA-0079,LOT-QA-0079,23,22,Listo para Producción
+SUB-QA-0080,LOT-QA-0080,24,22,Listo para Producción
+SUB-QA-0081,LOT-QA-0081,20,22,En Maduración
+SUB-QA-0082,LOT-QA-0082,21,22,En Maduración
+SUB-QA-0083,LOT-QA-0083,22,22,Listo para Producción
+SUB-QA-0084,LOT-QA-0084,23,22,Listo para Producción
+SUB-QA-0085,LOT-QA-0085,24,22,Listo para Producción
+SUB-QA-0086,LOT-QA-0086,20,22,En Maduración
+SUB-QA-0087,LOT-QA-0087,21,22,En Maduración
+SUB-QA-0088,LOT-QA-0088,22,22,Listo para Producción
+SUB-QA-0089,LOT-QA-0089,23,22,Listo para Producción
+SUB-QA-0090,LOT-QA-0090,24,22,Listo para Producción
+SUB-QA-0091,LOT-QA-0091,20,22,En Maduración
+SUB-QA-0092,LOT-QA-0092,21,22,En Maduración
+SUB-QA-0093,LOT-QA-0093,22,22,Listo para Producción
+SUB-QA-0094,LOT-QA-0094,23,22,Listo para Producción
+SUB-QA-0095,LOT-QA-0095,24,22,Listo para Producción
+SUB-QA-0096,LOT-QA-0096,20,22,En Maduración
+SUB-QA-0097,LOT-QA-0097,21,22,En Maduración
+SUB-QA-0098,LOT-QA-0098,22,22,Listo para Producción
+SUB-QA-0099,LOT-QA-0099,23,22,Listo para Producción
+SUB-QA-0100,LOT-QA-0100,24,22,Listo para Producción
+SUB-QA-0101,LOT-QA-0101,20,22,En Maduración
+SUB-QA-0102,LOT-QA-0102,21,22,En Maduración
+SUB-QA-0103,LOT-QA-0103,22,22,Listo para Producción
+SUB-QA-0104,LOT-QA-0104,23,22,Listo para Producción
+SUB-QA-0105,LOT-QA-0105,24,22,Listo para Producción
+SUB-QA-0106,LOT-QA-0106,20,22,En Maduración
+SUB-QA-0107,LOT-QA-0107,21,22,En Maduración
+SUB-QA-0108,LOT-QA-0108,22,22,Listo para Producción
+SUB-QA-0109,LOT-QA-0109,23,22,Listo para Producción
+SUB-QA-0110,LOT-QA-0110,24,22,Listo para Producción
+SUB-QA-0111,LOT-QA-0111,20,22,En Maduración
+SUB-QA-0112,LOT-QA-0112,21,22,En Maduración
+SUB-QA-0113,LOT-QA-0113,22,22,Listo para Producción
+SUB-QA-0114,LOT-QA-0114,23,22,Listo para Producción
+SUB-QA-0115,LOT-QA-0115,24,22,Listo para Producción
+SUB-QA-0116,LOT-QA-0116,20,22,En Maduración
+SUB-QA-0117,LOT-QA-0117,21,22,En Maduración
+SUB-QA-0118,LOT-QA-0118,22,22,Listo para Producción
+SUB-QA-0119,LOT-QA-0119,23,22,Listo para Producción
+SUB-QA-0120,LOT-QA-0120,24,22,Listo para Producción
+SUB-QA-0121,LOT-QA-0121,20,22,En Maduración
+SUB-QA-0122,LOT-QA-0122,21,22,En Maduración
+SUB-QA-0123,LOT-QA-0123,22,22,Listo para Producción
+SUB-QA-0124,LOT-QA-0124,23,22,Listo para Producción
+SUB-QA-0125,LOT-QA-0125,24,22,Listo para Producción
+SUB-QA-0126,LOT-QA-0126,20,22,En Maduración
+SUB-QA-0127,LOT-QA-0127,21,22,En Maduración
+SUB-QA-0128,LOT-QA-0128,22,22,Listo para Producción
+SUB-QA-0129,LOT-QA-0129,23,22,Listo para Producción
+SUB-QA-0130,LOT-QA-0130,24,22,Listo para Producción
+SUB-QA-0131,LOT-QA-0131,20,22,En Maduración
+SUB-QA-0132,LOT-QA-0132,21,22,En Maduración
+SUB-QA-0133,LOT-QA-0133,22,22,Listo para Producción
+SUB-QA-0134,LOT-QA-0134,23,22,Listo para Producción
+SUB-QA-0135,LOT-QA-0135,24,22,Listo para Producción
+SUB-QA-0136,LOT-QA-0136,20,22,En Maduración
+SUB-QA-0137,LOT-QA-0137,21,22,En Maduración
+SUB-QA-0138,LOT-QA-0138,22,22,Listo para Producción
+SUB-QA-0139,LOT-QA-0139,23,22,Listo para Producción
+SUB-QA-0140,LOT-QA-0140,24,22,Listo para Producción
+SUB-QA-0141,LOT-QA-0141,20,22,En Maduración
+SUB-QA-0142,LOT-QA-0142,21,22,En Maduración
+SUB-QA-0143,LOT-QA-0143,22,22,Listo para Producción
+SUB-QA-0144,LOT-QA-0144,23,22,Listo para Producción
+SUB-QA-0145,LOT-QA-0145,24,22,Listo para Producción
+SUB-QA-0146,LOT-QA-0146,20,22,En Maduración
+SUB-QA-0147,LOT-QA-0147,21,22,En Maduración
+SUB-QA-0148,LOT-QA-0148,22,22,Listo para Producción
+SUB-QA-0149,LOT-QA-0149,23,22,Listo para Producción
+SUB-QA-0150,LOT-QA-0150,24,22,Listo para Producción
