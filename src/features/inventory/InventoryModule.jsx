@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { listInventoryRequest } from '../../services/inventory.service'
+import { getExpirationReportRequest, listInventoryRequest, writeOffExpiredRequest } from '../../services/inventory.service'
 import { listProductsRequest } from '../../services/product.service'
 import CollapsibleSection from '../../components/dashboard/CollapsibleSection'
 import ReloadButton from '../../components/common/ReloadButton'
@@ -41,6 +41,16 @@ const formatDate = (value) => {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('es-GT')
 }
+
+// 'AAAA-MM-DD' (fecha sin hora, como la entrega el indicador de caducidad) -> 'DD/MM/AAAA'
+// sin pasar por Date, para que la zona horaria no la corra un dia.
+const formatPlainDate = (value) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ''))
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '-'
+}
+
+const formatMoney = (value) =>
+  new Intl.NumberFormat('es-GT', { style: 'currency', currency: 'GTQ', minimumFractionDigits: 2 }).format(Number(value) || 0)
 
 const toStartOfDay = (value) => {
   if (!value) {
@@ -98,36 +108,100 @@ function InventoryModule({ token, isActive }) {
   const [inventoryRows, setInventoryRows] = useState([])
   const [products, setProducts] = useState([])
   const [filters, setFilters] = useState(EMPTY_FILTERS)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [noticeMessage, setNoticeMessage] = useState('')
+  const [expirationReport, setExpirationReport] = useState(null)
+  const [writingOffId, setWritingOffId] = useState(null)
 
-  useEffect(() => {
-    if (!isActive) {
-      return
-    }
+  const requestData = () =>
+    Promise.all([listInventoryRequest(token), listProductsRequest(token), getExpirationReportRequest(token)])
 
-    loadData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, token])
+  const applyData = ([inventoryData, productsData, expirationData]) => {
+    setInventoryRows(Array.isArray(inventoryData) ? inventoryData : [])
+    setProducts(Array.isArray(productsData) ? productsData : [])
+    setExpirationReport(expirationData || null)
+    setErrorMessage('')
+  }
 
+  const applyLoadError = (error) => {
+    setErrorMessage(error.message || 'No se pudo cargar inventario')
+  }
+
+  // Recarga manual (boton y despues de dar de baja): marca primero el estado de carga.
   const loadData = async () => {
     setErrorMessage('')
     setIsLoading(true)
 
     try {
-      const [inventoryData, productsData] = await Promise.all([
-        listInventoryRequest(token),
-        listProductsRequest(token),
-      ])
-
-      setInventoryRows(Array.isArray(inventoryData) ? inventoryData : [])
-      setProducts(Array.isArray(productsData) ? productsData : [])
+      applyData(await requestData())
     } catch (error) {
-      setErrorMessage(error.message || 'No se pudo cargar inventario')
+      applyLoadError(error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  // Carga al abrir el modulo: el estado solo cambia cuando llega la respuesta (no de forma
+  // sincrona dentro del efecto) y se descarta si el modulo se cierra antes.
+  useEffect(() => {
+    if (!isActive) {
+      return undefined
+    }
+
+    let isCancelled = false
+
+    requestData()
+      .then((results) => {
+        if (!isCancelled) {
+          applyData(results)
+        }
+      })
+      .catch((error) => {
+        if (!isCancelled) {
+          applyLoadError(error)
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsLoading(false)
+        }
+      })
+
+    return () => {
+      isCancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, token])
+
+  const expiredExistencias = useMemo(
+    () => (expirationReport?.en_riesgo || []).filter((item) => item.estado === 'Vencido'),
+    [expirationReport]
+  )
+
+  const handleWriteOff = async (item) => {
+    const label = `${item.producto_nombre || 'Producto'}${item.codigo_trazabilidad ? ` (${item.codigo_trazabilidad})` : ''}`
+    const confirmed = window.confirm(
+      `Dar de baja por vencimiento ${item.cantidad} ${item.unidad_medida || ''} de ${label}? El producto dejara de estar disponible.`
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    setErrorMessage('')
+    setNoticeMessage('')
+    setWritingOffId(item.id_existencia)
+
+    try {
+      await writeOffExpiredRequest(item.id_existencia, token)
+      setNoticeMessage(`Existencia ${item.codigo_trazabilidad || `#${item.id_existencia}`} dada de baja por vencimiento`)
+      await loadData()
+    } catch (error) {
+      setErrorMessage(error.message || 'No se pudo dar de baja la existencia vencida')
+    } finally {
+      setWritingOffId(null)
     }
   }
 
@@ -479,6 +553,61 @@ function InventoryModule({ token, isActive }) {
             </table>
           </div>
           </CollapsibleSection>
+        </section>
+      ) : null}
+
+      {expiredExistencias.length > 0 ? (
+        <section className="panel-card" aria-label="Existencias vencidas">
+          <div className="providers-header-row">
+            <div>
+              <h4>Existencias vencidas</h4>
+              <p>
+                Producto que paso su fecha de vencimiento: ya no se asigna a pedidos ni a produccion. Darlo de baja lo
+                retira del stock y deja registrado quien lo hizo.
+              </p>
+            </div>
+          </div>
+
+          <div className="providers-table-wrap table-limited">
+            <table className="providers-table">
+              <thead>
+                <tr>
+                  <th>Existencia</th>
+                  <th>Producto</th>
+                  <th>Vencimiento</th>
+                  <th>Cantidad</th>
+                  <th>Valor</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {expiredExistencias.map((item) => (
+                  <tr key={`vencida-${item.id_existencia}`} className="inventory-row-expired">
+                    <td>{item.codigo_trazabilidad ? <PhaseCode code={item.codigo_trazabilidad} /> : `#${item.id_existencia}`}</td>
+                    <td>{item.producto_nombre || `Producto #${item.id_producto}`}</td>
+                    <td>
+                      {formatPlainDate(item.fecha_vencimiento)} ({Math.abs(item.dias_para_vencer)}{' '}
+                      {Math.abs(item.dias_para_vencer) === 1 ? 'dia' : 'dias'})
+                    </td>
+                    <td>
+                      {formatNumber(item.cantidad)} {item.unidad_medida || ''}
+                    </td>
+                    <td>{formatMoney(item.valor)}</td>
+                    <td className="table-actions">
+                      <button
+                        type="button"
+                        className="danger-button"
+                        onClick={() => handleWriteOff(item)}
+                        disabled={writingOffId !== null}
+                      >
+                        {writingOffId === item.id_existencia ? 'Dando de baja...' : 'Dar de baja'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       ) : null}
 

@@ -39,3 +39,21 @@ export const listExistenciasByProductRequest = async (idProducto, token) => {
 
   return parseResponse(response, 'No se pudieron obtener los lotes disponibles del producto')
 }
+export const getExpirationReportRequest = async (token, meses) => {
+  const query = meses ? `?meses=${meses}` : ''
+  const response = await fetch(`${API_BASE_URL}/api/inventario/caducidad${query}`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  })
+
+  return parseResponse(response, 'No se pudo obtener el indicador de caducidad')
+}
+
+export const writeOffExpiredRequest = async (idExistencia, token) => {
+  const response = await fetch(`${API_BASE_URL}/api/inventario/existencias/${idExistencia}/baja-vencimiento`, {
+    method: 'POST',
+    headers: buildHeaders(token),
+  })
+
+  return parseResponse(response, 'No se pudo dar de baja la existencia vencida')
+}

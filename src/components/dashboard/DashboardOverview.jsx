@@ -3,6 +3,7 @@ import UpcomingVehicleServicesWidget from './UpcomingVehicleServicesWidget'
 import UpcomingMaturationLotsWidget from './UpcomingMaturationLotsWidget'
 import ProductionStatusWidget from './ProductionStatusWidget'
 import PendingAssignmentsWidget from './PendingAssignmentsWidget'
+import ExpirationRiskWidget from './ExpirationRiskWidget'
 import CollapsibleSection from './CollapsibleSection'
 
 const DashboardCharts = lazy(() => import('./DashboardCharts'))
@@ -15,6 +16,7 @@ function DashboardOverview({
   showUpcomingMaturationLots = true,
   showProductionStatus = true,
   showPendingAssignments = false,
+  showExpirationRisk = false,
   showProductionCharts = false,
   showOrderCharts = false,
   showInventoryCharts = false,
@@ -31,6 +33,7 @@ function DashboardOverview({
           {showUpcomingVehicleServices ? <UpcomingVehicleServicesWidget token={token} /> : null}
           {showUpcomingMaturationLots ? <UpcomingMaturationLotsWidget token={token} /> : null}
           {showProductionStatus ? <ProductionStatusWidget token={token} /> : null}
+          {showExpirationRisk ? <ExpirationRiskWidget token={token} /> : null}
         </div>
       </CollapsibleSection>
 

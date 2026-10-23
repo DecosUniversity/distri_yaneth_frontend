@@ -579,6 +579,57 @@
   grid-column: span 1;
 }
 
+.widget-card--expiration {
+  grid-column: span 1;
+}
+
+.expiration-summary {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.expiration-summary-item {
+  display: grid;
+  gap: 2px;
+  border: 1px solid #f3dfb0;
+  border-radius: 10px;
+  background: #fff7e3;
+  padding: 8px 10px;
+
+  span {
+    color: #946100;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  strong {
+    color: #5c3d00;
+    font-size: 1rem;
+  }
+
+  small {
+    color: #7a5a1a;
+  }
+}
+
+.expiration-summary-item--expired {
+  border-color: #f0c2c2;
+  background: #fff6f6;
+
+  span,
+  small {
+    color: #b42318;
+  }
+
+  strong {
+    color: #7a1a12;
+  }
+}
+
 .inventory-summary {
   margin-top: 16px;
   display: grid;

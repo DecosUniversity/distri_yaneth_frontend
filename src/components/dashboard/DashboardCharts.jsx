@@ -22,7 +22,7 @@ import {
   getComprasPorProductoReportRequest,
   getPedidosDelDiaReportRequest,
 } from '../../services/order.service'
-import { listInventoryRequest } from '../../services/inventory.service'
+import { getExpirationReportRequest, listInventoryRequest } from '../../services/inventory.service'
 import CollapsibleSection from './CollapsibleSection'
 
 const CHART_COLOR = '#2f7035'
@@ -88,6 +88,18 @@ const formatNumber = (value) => {
   }
 
   return new Intl.NumberFormat('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value))
+}
+
+// 'AAAA-MM' -> 'oct 2026'
+const formatMonthLabel = (value) => {
+  const [year, month] = String(value).split('-').map(Number)
+  if (!year || !month) {
+    return String(value)
+  }
+
+  return new Intl.DateTimeFormat('es-GT', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(year, month - 1, 1)))
+    .replace('.', '')
 }
 
 const getCurrentMonthRange = () => {
@@ -262,6 +274,7 @@ function DashboardCharts({ token, showProductionCharts = true, showOrderCharts =
   const [pedidosDelDia, setPedidosDelDia] = useState([])
   const [pedidosDelDiaFecha, setPedidosDelDiaFecha] = useState(null)
   const [existenciasPorProducto, setExistenciasPorProducto] = useState([])
+  const [perdidaCaducidad, setPerdidaCaducidad] = useState([])
   const [comprasPorCliente, setComprasPorCliente] = useState([])
   const [comprasPorProducto, setComprasPorProducto] = useState([])
   const [isLoading, setIsLoading] = useState(false)
@@ -356,6 +369,13 @@ function DashboardCharts({ token, showProductionCharts = true, showOrderCharts =
                 .slice(0, INVENTORY_TOP_N)
 
               setExistenciasPorProducto(sorted)
+            }),
+            getExpirationReportRequest(token).then((report) => {
+              if (!isCancelled) {
+                setPerdidaCaducidad(
+                  (report?.perdida_mensual || []).map((row) => ({ mes: formatMonthLabel(row.mes), valor: Number(row.valor) || 0 }))
+                )
+              }
             })
           )
         }
@@ -470,6 +490,19 @@ function DashboardCharts({ token, showProductionCharts = true, showOrderCharts =
             valueKey="cantidad"
             valueLabel="Cantidad"
             emptyMessage="Aun no hay existencias registradas."
+          />
+        ) : null}
+
+        {showInventoryCharts ? (
+          <ChartCard
+            title="Perdida por caducidad"
+            subtitle="Valor del producto que llego a su vencimiento sin despacharse, por mes"
+            data={perdidaCaducidad}
+            nameKey="mes"
+            nameLabel="Mes"
+            valueKey="valor"
+            valueLabel="Perdida (Q)"
+            emptyMessage="Aun no hay datos de caducidad."
           />
         ) : null}
       </div>
