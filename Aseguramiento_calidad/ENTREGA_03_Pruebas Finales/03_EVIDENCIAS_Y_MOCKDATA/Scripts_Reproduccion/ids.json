@@ -1,0 +1,2 @@
+{ "cli": { "nit": "1234567-8" }, "rec": { "id_entrada": 28, "codigo_lote": "BOD-261020-001" },
+  "pro1": { "id_proceso": 14, "codigo": "PRO-000014" }, "pro2": { "id_proceso": 15, "codigo": "PRO-000015" } }
