@@ -23,3 +23,8 @@ export const notifySuccess = (message) => {
 export const notifyError = (message) => {
   Toast.fire({ icon: 'error', title: message })
 }
+
+// Aviso que el usuario debe leer: no se cierra solo hasta despues de unos segundos mas.
+export const notifyWarning = (message) => {
+  Toast.fire({ icon: 'warning', title: message, timer: 8000 })
+}

@@ -207,6 +207,67 @@
   border: 1px solid #b7e8ae;
 }
 
+.feedback.warning {
+  color: #7a4a00;
+  background: #fff7e3;
+  border: 1px solid #f3dfb0;
+}
+
+/* Control de combustible en entregas */
+.fuel-alert-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #fff7e3;
+  border: 1px solid #f3dfb0;
+  color: #7a4a00;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.fuel-alert-list {
+  margin: 8px 0 0;
+  padding-left: 22px;
+
+  li + li {
+    margin-top: 4px;
+  }
+}
+
+.fuel-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px 16px;
+  margin-bottom: 8px;
+}
+
+.fuel-load-row {
+  align-items: end;
+  margin-bottom: 8px;
+}
+
+.fuel-load-remove {
+  display: flex;
+  align-items: end;
+}
+
+.logistics-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 979px) {
+  .logistics-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .logistics-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
 .row-options {
   margin-top: 6px;
   display: flex;

@@ -81,6 +81,7 @@ test.describe('Flujo de Distribucion: pedido -> entrega -> devolucion -> trazabi
     await page.getByRole('button', { name: 'Agregar pedido' }).click()
     const orderModal = page.locator('.modal-backdrop').last()
     await orderModal.getByLabel('Cliente *').selectOption({ label: clientName })
+    await orderModal.getByLabel('Fecha de entrega programada *').fill('2099-12-31')
     await orderModal.getByLabel('Producto').selectOption({ label: productoNombre })
     await orderModal.getByLabel('Lote').selectOption(existenciaId)
 
@@ -125,6 +126,7 @@ test.describe('Flujo de Distribucion: pedido -> entrega -> devolucion -> trazabi
     await page.getByRole('button', { name: 'Registrar salida' }).click()
     const salidaModal = page.locator('.modal-backdrop').last()
     await salidaModal.getByLabel('Km salida *').fill('10')
+    await salidaModal.getByLabel('Nivel del tanque *').selectOption({ label: 'Lleno' })
     await salidaModal.getByRole('button', { name: 'Registrar salida' }).click()
     await expect(toastMessage(page, 'Salida registrada correctamente')).toBeVisible()
 
@@ -140,6 +142,7 @@ test.describe('Flujo de Distribucion: pedido -> entrega -> devolucion -> trazabi
     await page.getByRole('button', { name: 'Cerrar entrega' }).click()
     const cerrarModal = page.locator('.modal-backdrop').last()
     await cerrarModal.getByLabel('Km llegada *').fill('15')
+    await cerrarModal.getByLabel('Nivel del tanque al llegar *').selectOption({ label: '3/4' })
     await cerrarModal.getByRole('button', { name: 'Cerrar entrega' }).click()
     await expect(successMessage(page, 'cerrada correctamente')).toBeVisible()
 

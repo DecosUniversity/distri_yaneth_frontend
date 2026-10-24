@@ -161,6 +161,7 @@ function DashboardPage({ onLogout, session }) {
               showProductionStatus={canUseProduction}
               showPendingAssignments={canUseRoutes}
               showExpirationRisk={canUseInventory}
+              showLogistics={canUseVehicleServices}
               showProductionCharts={canUseProduction}
               showOrderCharts={canUseOrders}
               showInventoryCharts={canUseInventory}

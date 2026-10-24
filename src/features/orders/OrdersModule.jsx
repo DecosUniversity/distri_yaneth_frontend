@@ -772,7 +772,7 @@ function OrdersModule({ token, isActive }) {
         {
           id_cliente: Number(orderForm.id_cliente),
           observaciones: orderForm.observaciones || undefined,
-          fecha_entrega_programada: orderForm.fecha_entrega_programada || undefined,
+          fecha_entrega_programada: orderForm.fecha_entrega_programada,
           lineas: lineas.map((linea) => ({
             id_producto: linea.id_producto,
             cantidad: linea.cantidad,
@@ -811,10 +811,15 @@ function OrdersModule({ token, isActive }) {
   }
 
   const handleSaveFechaEntrega = async () => {
+    if (!editFechaEntrega) {
+      notifyError('La fecha de entrega programada es obligatoria')
+      return
+    }
+
     setIsSavingFechaEntrega(true)
 
     try {
-      const updated = await updateOrderFechaEntregaRequest(detailOrder.id_pedido, editFechaEntrega || null, token)
+      const updated = await updateOrderFechaEntregaRequest(detailOrder.id_pedido, editFechaEntrega, token)
       setDetailOrder(updated)
       setOrders((previous) => previous.map((order) => (order.id_pedido === updated.id_pedido ? updated : order)))
       notifySuccess('Fecha de entrega actualizada')
@@ -1136,13 +1141,15 @@ function OrdersModule({ token, isActive }) {
                 </label>
 
                 <label>
-                  Fecha de entrega programada
+                  Fecha de entrega programada *
                   <input
                     name="fecha_entrega_programada"
                     type="date"
                     value={orderForm.fecha_entrega_programada}
                     onChange={handleOrderFieldChange}
+                    required
                   />
+                  <small>Con esta fecha se mide la puntualidad de las entregas.</small>
                 </label>
 
                 <label>
@@ -1287,7 +1294,7 @@ function OrdersModule({ token, isActive }) {
                     type="button"
                     className="secondary-button"
                     onClick={handleSaveFechaEntrega}
-                    disabled={isSavingFechaEntrega}
+                    disabled={isSavingFechaEntrega || !editFechaEntrega}
                   >
                     {isSavingFechaEntrega ? 'Guardando...' : 'Guardar fecha'}
                   </button>

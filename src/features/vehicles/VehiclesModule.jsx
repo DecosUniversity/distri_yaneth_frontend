@@ -16,6 +16,7 @@ const EMPTY_VEHICLE_FORM = {
   modelo: '',
   estado: 'Disponible',
   kilometraje_actual: '',
+  capacidad_tanque_galones: '',
 }
 
 const normalizeVehiclePayload = (vehicleForm) => ({
@@ -26,6 +27,9 @@ const normalizeVehiclePayload = (vehicleForm) => ({
     vehicleForm.kilometraje_actual === ''
       ? undefined
       : Number(vehicleForm.kilometraje_actual),
+  // Vacio = sin registrar; con ella se calcula el consumo de combustible de cada entrega.
+  capacidad_tanque_galones:
+    vehicleForm.capacidad_tanque_galones === '' ? null : Number(vehicleForm.capacidad_tanque_galones),
 })
 
 function VehiclesModule({ token, isActive, roleName }) {
@@ -127,6 +131,10 @@ function VehiclesModule({ token, isActive, roleName }) {
         vehicle.kilometraje_actual === null || vehicle.kilometraje_actual === undefined
           ? ''
           : String(vehicle.kilometraje_actual),
+      capacidad_tanque_galones:
+        vehicle.capacidad_tanque_galones === null || vehicle.capacidad_tanque_galones === undefined
+          ? ''
+          : String(Number(vehicle.capacidad_tanque_galones)),
     })
     setVehiclesNotice('')
     setVehiclesError('')
@@ -250,6 +258,22 @@ function VehiclesModule({ token, isActive, roleName }) {
               readOnly={isPilot}
             />
           </label>
+
+          <label>
+            Capacidad del tanque (galones)
+            <input
+              name="capacidad_tanque_galones"
+              type="number"
+              min="0.01"
+              max="200"
+              step="0.01"
+              value={vehicleForm.capacidad_tanque_galones}
+              onChange={handleVehicleFieldChange}
+              placeholder="Ej. 18"
+              disabled={isPilot}
+            />
+            <small>Necesaria para calcular el consumo y el rendimiento de combustible de las entregas.</small>
+          </label>
         </div>
 
         <div className="provider-form-actions">
@@ -291,6 +315,7 @@ function VehiclesModule({ token, isActive, roleName }) {
               <th>Modelo</th>
               <th>Estado</th>
               <th>Kilometraje</th>
+              <th>Tanque (gal)</th>
               <th>Ult. modificacion</th>
               <th>Acciones</th>
             </tr>
@@ -298,7 +323,7 @@ function VehiclesModule({ token, isActive, roleName }) {
           <tbody>
             {vehicles.length === 0 && !isVehiclesLoading ? (
               <tr>
-                <td colSpan="6" className="empty-table-cell">
+                <td colSpan="7" className="empty-table-cell">
                   No hay vehiculos registrados.
                 </td>
               </tr>
@@ -310,6 +335,7 @@ function VehiclesModule({ token, isActive, roleName }) {
                 <td>{vehicle.modelo || '-'}</td>
                 <td>{vehicle.estado || '-'}</td>
                 <td>{vehicle.kilometraje_actual ?? '-'}</td>
+                <td>{vehicle.capacidad_tanque_galones ? Number(vehicle.capacidad_tanque_galones) : 'Sin registrar'}</td>
                 <td>
                   {vehicle.fecha_modificacion
                     ? new Date(vehicle.fecha_modificacion).toLocaleString('es-GT')

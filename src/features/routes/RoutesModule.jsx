@@ -13,7 +13,9 @@ import {
 import ReloadButton from '../../components/common/ReloadButton'
 import PhaseCode from '../../components/common/PhaseCode'
 import ModalCloseButton from '../../components/common/ModalCloseButton'
-import { notifyError, notifySuccess } from '../../utils/toast'
+import { notifyError, notifySuccess, notifyWarning } from '../../utils/toast'
+import LogisticsIndicators from './LogisticsIndicators'
+import { TANK_LEVEL_OPTIONS, formatTankLevel } from './fuelLevels'
 
 const PILOT_ROLE = 'Piloto'
 const ADMIN_ROLE = 'Administrador'
@@ -54,8 +56,18 @@ const computeManifestStatus = (item) => {
 }
 
 const EMPTY_CREATE_FORM = { id_vehiculo: '', id_piloto: '' }
-const EMPTY_SALIDA_FORM = { km_salida: '', galones_combustible: '' }
-const EMPTY_CERRAR_FORM = { km_llegada: '' }
+const EMPTY_SALIDA_FORM = { km_salida: '', nivel_tanque_salida: '' }
+const EMPTY_CERRAR_FORM = { km_llegada: '', nivel_tanque_llegada: '', cargas: [] }
+const EMPTY_CARGA = { numero_factura: '', galones: '', monto: '' }
+
+// Muestra las alertas de combustible que devuelve la API al registrar la salida o el cierre.
+const notifyFuelAlerts = (route) => {
+  const alertas = route?.alertas_combustible || []
+
+  if (alertas.length > 0) {
+    notifyWarning(`Revisar combustible: ${alertas.join(' ')}`)
+  }
+}
 
 const formatNumber = (value) => {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
@@ -426,17 +438,18 @@ function RoutesModule({ token, isActive, roleName }) {
     setIsSubmitting(true)
 
     try {
-      await registerRouteDepartureRequest(
+      const updatedRoute = await registerRouteDepartureRequest(
         detailRoute.id_ruta,
         {
           km_salida: Number(salidaForm.km_salida),
-          galones_combustible: salidaForm.galones_combustible === '' ? undefined : Number(salidaForm.galones_combustible),
+          nivel_tanque_salida: Number(salidaForm.nivel_tanque_salida),
         },
         token
       )
 
       setActiveAction(null)
       notifySuccess('Salida registrada correctamente')
+      notifyFuelAlerts(updatedRoute)
       await refreshDetailRoute(detailRoute.id_ruta)
     } catch (error) {
       const message = error.message || 'No se pudo registrar la salida'
@@ -510,17 +523,53 @@ function RoutesModule({ token, isActive, roleName }) {
     }
   }
 
+  const handleCargaChange = (index, field, value) => {
+    setCerrarForm((previous) => ({
+      ...previous,
+      cargas: previous.cargas.map((carga, position) => (position === index ? { ...carga, [field]: value } : carga)),
+    }))
+  }
+
+  const addCarga = () => {
+    setCerrarForm((previous) => ({ ...previous, cargas: [...previous.cargas, { ...EMPTY_CARGA }] }))
+  }
+
+  const removeCarga = (index) => {
+    setCerrarForm((previous) => ({ ...previous, cargas: previous.cargas.filter((_, position) => position !== index) }))
+  }
+
   const handleCerrarSubmit = async (event) => {
     event.preventDefault()
     setDetailError('')
+
+    const cargas = cerrarForm.cargas.map((carga) => ({
+      numero_factura: carga.numero_factura.trim(),
+      galones: Number(carga.galones),
+      monto: Number(carga.monto),
+    }))
+
+    if (cargas.some((carga) => !carga.numero_factura || !(carga.galones > 0) || !(carga.monto > 0))) {
+      setDetailError('Completa el numero de factura, los galones y el monto de cada factura, o quita la que no uses')
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
-      await closeRouteRequest(detailRoute.id_ruta, { km_llegada: Number(cerrarForm.km_llegada) }, token)
+      const closedRoute = await closeRouteRequest(
+        detailRoute.id_ruta,
+        {
+          km_llegada: Number(cerrarForm.km_llegada),
+          nivel_tanque_llegada: Number(cerrarForm.nivel_tanque_llegada),
+          cargas,
+        },
+        token
+      )
 
       setActiveAction(null)
       setModuleNotice(`Entrega #${detailRoute.id_ruta} cerrada correctamente`)
       notifySuccess(`Entrega #${detailRoute.id_ruta} cerrada correctamente`)
+      notifyFuelAlerts(closedRoute)
       setDetailModalOpen(false)
       await loadInitialData()
     } catch (error) {
@@ -572,7 +621,20 @@ function RoutesModule({ token, isActive, roleName }) {
         >
           Consultar
         </button>
+        {!isPiloto ? (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'indicadores'}
+            className={`secondary-button maturation-tab-button ${viewMode === 'indicadores' ? 'is-active' : ''}`}
+            onClick={() => setViewMode('indicadores')}
+          >
+            Indicadores
+          </button>
+        ) : null}
       </div>
+
+      {viewMode === 'indicadores' && !isPiloto ? <LogisticsIndicators token={token} vehicles={vehicles} /> : null}
 
       {viewMode === 'consultar' ? (
         <div className="maturation-filter-panel">
@@ -594,6 +656,7 @@ function RoutesModule({ token, isActive, roleName }) {
       {moduleError ? <p className="feedback error">{moduleError}</p> : null}
       {moduleNotice ? <p className="feedback success">{moduleNotice}</p> : null}
 
+      {viewMode !== 'indicadores' ? (
       <div className="providers-table-wrap table-limited">
         <table className="providers-table">
           <thead>
@@ -622,7 +685,14 @@ function RoutesModule({ token, isActive, roleName }) {
                 <td>#{route.id_ruta}</td>
                 <td>{route.vehiculo_placa || `#${route.id_vehiculo}`}</td>
                 <td>{route.piloto_nombre || `#${route.id_piloto}`}</td>
-                <td>{route.estado}</td>
+                <td>
+                  {route.estado}
+                  {(route.alertas_combustible || []).length > 0 ? (
+                    <span className="fuel-alert-badge" title={route.alertas_combustible.join(' ')}>
+                      Revisar combustible
+                    </span>
+                  ) : null}
+                </td>
                 <td>{formatNumber(route.km_salida)}</td>
                 <td>{formatNumber(route.km_llegada)}</td>
                 <td>{formatDateTime(route.fecha_salida)}</td>
@@ -636,6 +706,7 @@ function RoutesModule({ token, isActive, roleName }) {
           </tbody>
         </table>
       </div>
+      ) : null}
 
       {createModalOpen ? (
         <div className="modal-backdrop">
@@ -764,6 +835,41 @@ function RoutesModule({ token, isActive, roleName }) {
                 </button>
               ) : null}
             </div>
+
+            <div className="maturation-section-divider" aria-hidden="true" />
+
+            <h4>Combustible</h4>
+            <div className="fuel-detail-grid">
+              <span>Tanque al salir: <strong>{formatTankLevel(detailRoute.nivel_tanque_salida)}</strong></span>
+              <span>Tanque al llegar: <strong>{formatTankLevel(detailRoute.nivel_tanque_llegada)}</strong></span>
+              <span>
+                Capacidad del tanque:{' '}
+                <strong>
+                  {detailRoute.capacidad_tanque_galones ? `${formatNumber(detailRoute.capacidad_tanque_galones)} gal` : 'sin registrar'}
+                </strong>
+              </span>
+              <span>Consumo: <strong>{detailRoute.consumo_galones === null || detailRoute.consumo_galones === undefined ? '-' : `${formatNumber(detailRoute.consumo_galones)} gal`}</strong></span>
+              <span>Rendimiento: <strong>{detailRoute.km_por_galon ? `${formatNumber(detailRoute.km_por_galon)} km/gal` : '-'}</strong></span>
+            </div>
+            {(detailRoute.cargas_combustible || []).length > 0 ? (
+              <ul className="widget-list widget-list--compact">
+                {detailRoute.cargas_combustible.map((carga) => (
+                  <li key={carga.id_carga}>
+                    <strong>Factura {carga.numero_factura}</strong>
+                    <span>
+                      {formatNumber(carga.galones)} gal · {formatCurrency(carga.monto)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {(detailRoute.alertas_combustible || []).length > 0 ? (
+              <ul className="feedback warning fuel-alert-list">
+                {detailRoute.alertas_combustible.map((alerta) => (
+                  <li key={alerta}>{alerta}</li>
+                ))}
+              </ul>
+            ) : null}
 
             <div className="maturation-section-divider" aria-hidden="true" />
 
@@ -897,18 +1003,29 @@ function RoutesModule({ token, isActive, roleName }) {
                   />
                 </label>
                 <label>
-                  Galones combustible
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={salidaForm.galones_combustible}
+                  Nivel del tanque *
+                  <select
+                    value={salidaForm.nivel_tanque_salida}
                     onChange={(event) =>
-                      setSalidaForm((previous) => ({ ...previous, galones_combustible: event.target.value }))
+                      setSalidaForm((previous) => ({ ...previous, nivel_tanque_salida: event.target.value }))
                     }
-                  />
+                    required
+                  >
+                    <option value="">Selecciona como marca el indicador</option>
+                    {TANK_LEVEL_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
+              {!detailRoute.capacidad_tanque_galones ? (
+                <p className="feedback warning">
+                  El vehiculo no tiene registrada la capacidad del tanque: la salida se guarda, pero no se podra calcular el
+                  consumo de esta entrega.
+                </p>
+              ) : null}
 
               <div className="provider-form-actions">
                 <button type="submit" disabled={isSubmitting}>
@@ -1032,7 +1149,10 @@ function RoutesModule({ token, isActive, roleName }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
               <div>
                 <h4 style={{ marginBottom: 4 }}>Cerrar entrega #{detailRoute.id_ruta}</h4>
-                <p style={{ margin: 0 }}>Km salida: {formatNumber(detailRoute.km_salida)}</p>
+                <p style={{ margin: 0 }}>
+                  Km salida: {formatNumber(detailRoute.km_salida)} · Tanque al salir:{' '}
+                  {formatTankLevel(detailRoute.nivel_tanque_salida)}
+                </p>
               </div>
               <button type="button" className="secondary-button" onClick={closeAction}>
                 Cerrar
@@ -1050,10 +1170,79 @@ function RoutesModule({ token, isActive, roleName }) {
                     min="0"
                     step="0.01"
                     value={cerrarForm.km_llegada}
-                    onChange={(event) => setCerrarForm({ km_llegada: event.target.value })}
+                    onChange={(event) => setCerrarForm((previous) => ({ ...previous, km_llegada: event.target.value }))}
                     required
                   />
                 </label>
+                <label>
+                  Nivel del tanque al llegar *
+                  <select
+                    value={cerrarForm.nivel_tanque_llegada}
+                    onChange={(event) =>
+                      setCerrarForm((previous) => ({ ...previous, nivel_tanque_llegada: event.target.value }))
+                    }
+                    required
+                  >
+                    <option value="">Selecciona como marca el indicador</option>
+                    {TANK_LEVEL_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div style={{ width: '100%', marginTop: 8 }}>
+                <h4 style={{ marginBottom: 4 }}>Facturas de combustible (opcional)</h4>
+                <p style={{ margin: '0 0 8px' }}>
+                  Registra cada factura si cargaste combustible durante la entrega. Si no cargaste, dejalo vacio.
+                </p>
+                {cerrarForm.cargas.map((carga, index) => (
+                  <div className="provider-form-grid fuel-load-row" key={index}>
+                    <label>
+                      No. de factura *
+                      <input
+                        type="text"
+                        maxLength={40}
+                        value={carga.numero_factura}
+                        onChange={(event) => handleCargaChange(index, 'numero_factura', event.target.value)}
+                        required
+                      />
+                    </label>
+                    <label>
+                      Galones *
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        max={detailRoute.capacidad_tanque_galones || undefined}
+                        value={carga.galones}
+                        onChange={(event) => handleCargaChange(index, 'galones', event.target.value)}
+                        required
+                      />
+                    </label>
+                    <label>
+                      Monto (Q) *
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={carga.monto}
+                        onChange={(event) => handleCargaChange(index, 'monto', event.target.value)}
+                        required
+                      />
+                    </label>
+                    <div className="fuel-load-remove">
+                      <button type="button" className="secondary-button" onClick={() => removeCarga(index)}>
+                        Quitar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" className="secondary-button" onClick={addCarga}>
+                  + Agregar factura
+                </button>
               </div>
 
               <div className="provider-form-actions">

@@ -88,3 +88,19 @@ export const closeRouteRequest = async (id, payload, token) => {
 
   return parseResponse(response, 'No se pudo cerrar la ruta')
 }
+
+export const getLogisticsIndicatorsRequest = async ({ desde, hasta, idVehiculo } = {}, token) => {
+  const params = new URLSearchParams()
+
+  if (desde) params.set('desde', desde)
+  if (hasta) params.set('hasta', hasta)
+  if (idVehiculo) params.set('id_vehiculo', idVehiculo)
+
+  const query = params.toString()
+  const response = await fetch(`${API_BASE_URL}/api/rutas/reportes/indicadores${query ? `?${query}` : ''}`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  })
+
+  return parseResponse(response, 'No se pudieron obtener los indicadores de logistica')
+}
