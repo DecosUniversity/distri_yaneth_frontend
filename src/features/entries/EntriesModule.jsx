@@ -111,15 +111,6 @@ function EntriesModule({ token, userName, isActive }) {
     search: '',
   })
 
-  useEffect(() => {
-    if (!isActive) {
-      return
-    }
-
-    loadInitialData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, token])
-
   const loadInitialData = async () => {
     setEntriesError('')
     setIsEntriesLoading(true)
@@ -165,6 +156,16 @@ function EntriesModule({ token, userName, isActive }) {
       setIsEntriesLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+
+    // La carga cambia estado: se agenda fuera del cuerpo del efecto (regla set-state-in-effect).
+    queueMicrotask(loadInitialData)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, token])
 
   const handleEntryFieldChange = (event) => {
     const { name, value } = event.target

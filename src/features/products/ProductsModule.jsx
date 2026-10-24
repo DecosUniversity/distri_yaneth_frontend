@@ -75,21 +75,11 @@ function ProductsModule({ token, isActive }) {
   const [editingProductPlan, setEditingProductPlan] = useState([])
   const [isLoadingEditingProductPlan, setIsLoadingEditingProductPlan] = useState(false)
 
-  useEffect(() => {
-    if (!isActive) {
-      return
-    }
-
-    loadProducts()
-    loadStageTypes()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, token])
-
   const loadStageTypes = async () => {
     try {
       const data = await listStageTypesRequest(token)
       setStageTypes(Array.isArray(data) ? data : [])
-    } catch (error) {
+    } catch {
       // El catalogo de etapas es secundario a la lista de productos: si falla, el plan de
       // proceso simplemente aparecera sin opciones para elegir, sin bloquear el modulo.
       setStageTypes([])
@@ -109,6 +99,17 @@ function ProductsModule({ token, isActive }) {
       setIsProductsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+
+    // La carga cambia estado: se agenda fuera del cuerpo del efecto (regla set-state-in-effect).
+    queueMicrotask(loadProducts)
+    queueMicrotask(loadStageTypes)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, token])
 
   const handleProductFieldChange = (event) => {
     const { name, value } = event.target
@@ -273,7 +274,7 @@ function ProductsModule({ token, isActive }) {
       try {
         const requirements = await getProductStageRequirementsRequest(product.id_producto, token)
         setEditingProductPlan(Array.isArray(requirements) ? requirements : [])
-      } catch (error) {
+      } catch {
         // El plan es informativo en esta pantalla: si falla la carga, solo se omite y el
         // enlace a Produccion sigue disponible para verlo/editarlo alla.
         setEditingProductPlan([])

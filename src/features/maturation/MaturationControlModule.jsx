@@ -91,15 +91,6 @@ function MaturationControlModule({ token, isActive }) {
   const [splitForm, setSplitForm] = useState(EMPTY_SPLIT_FORM)
   const [closeForm, setCloseForm] = useState(EMPTY_CLOSE_FORM)
 
-  useEffect(() => {
-    if (!isActive) {
-      return
-    }
-
-    loadInitialData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, token])
-
   const switchToGestionView = () => {
     setViewMode('gestion')
     setSelectedTab((current) => (GESTION_SUBLOT_STATES.has(current) ? current : SUBLOT_ACTIVE_STATE))
@@ -129,6 +120,16 @@ function MaturationControlModule({ token, isActive }) {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+
+    // La carga cambia estado: se agenda fuera del cuerpo del efecto (regla set-state-in-effect).
+    queueMicrotask(loadInitialData)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, token])
 
   const pendingLots = lots.filter((lot) => lot.estado_registro === PENDING_REGISTRATION_STATE)
   const acceptedLots = lots.filter((lot) => lot.estado_registro !== PENDING_REGISTRATION_STATE)

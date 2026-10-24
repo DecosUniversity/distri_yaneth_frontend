@@ -31,15 +31,6 @@ function ServiceTypesModule({ token, isActive }) {
   const [serviceTypesError, setServiceTypesError] = useState('')
   const [serviceTypesNotice, setServiceTypesNotice] = useState('')
 
-  useEffect(() => {
-    if (!isActive) {
-      return
-    }
-
-    loadServiceTypes()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, token])
-
   const loadServiceTypes = async () => {
     setServiceTypesError('')
     setIsServiceTypesLoading(true)
@@ -53,6 +44,16 @@ function ServiceTypesModule({ token, isActive }) {
       setIsServiceTypesLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+
+    // La carga cambia estado: se agenda fuera del cuerpo del efecto (regla set-state-in-effect).
+    queueMicrotask(loadServiceTypes)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, token])
 
   const handleFieldChange = (event) => {
     const { name, value } = event.target

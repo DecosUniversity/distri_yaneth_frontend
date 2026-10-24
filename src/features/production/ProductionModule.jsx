@@ -298,15 +298,6 @@ function ProductionModule({ token, isActive, roleName }) {
   const [requirementsNotice, setRequirementsNotice] = useState('')
   const [detailRequiredStages, setDetailRequiredStages] = useState([])
 
-  useEffect(() => {
-    if (!isActive) {
-      return
-    }
-
-    loadInitialData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, token])
-
   const loadInitialData = async () => {
     setModuleError('')
     setIsLoading(true)
@@ -347,6 +338,16 @@ function ProductionModule({ token, isActive, roleName }) {
     }
   }
 
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+
+    // La carga cambia estado: se agenda fuera del cuerpo del efecto (regla set-state-in-effect).
+    queueMicrotask(loadInitialData)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, token])
+
   const loadProductivityReport = async (agrupacion) => {
     setProductivityError('')
     setIsLoadingProductivity(true)
@@ -367,7 +368,8 @@ function ProductionModule({ token, isActive, roleName }) {
       return
     }
 
-    loadProductivityReport(productivityGrouping)
+    // La carga cambia estado: se agenda fuera del cuerpo del efecto (regla set-state-in-effect).
+    queueMicrotask(() => loadProductivityReport(productivityGrouping))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, viewMode, productivityGrouping, token])
 
@@ -566,7 +568,7 @@ function ProductionModule({ token, isActive, roleName }) {
       const requirements = await getProductStageRequirementsRequest(Number(value), token)
       const allowedIds = new Set((Array.isArray(requirements) ? requirements : []).map((item) => item.id_tipo_etapa))
       setGreenPackStageOptions(stageTypes.filter((stageType) => allowedIds.has(stageType.id_tipo_etapa)))
-    } catch (error) {
+    } catch {
       // Si falla la carga del plan, se deja el catalogo completo como respaldo (mejor dejar
       // elegir de mas que bloquear por completo el formulario).
       setGreenPackStageOptions([])

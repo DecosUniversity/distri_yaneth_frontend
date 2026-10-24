@@ -39,15 +39,6 @@ function VehiclesModule({ token, isActive, roleName }) {
   const [vehiclesError, setVehiclesError] = useState('')
   const [vehiclesNotice, setVehiclesNotice] = useState('')
 
-  useEffect(() => {
-    if (!isActive) {
-      return
-    }
-
-    loadVehicles()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, token])
-
   const loadVehicles = async () => {
     setVehiclesError('')
     setIsVehiclesLoading(true)
@@ -61,6 +52,16 @@ function VehiclesModule({ token, isActive, roleName }) {
       setIsVehiclesLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+
+    // La carga cambia estado: se agenda fuera del cuerpo del efecto (regla set-state-in-effect).
+    queueMicrotask(loadVehicles)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, token])
 
   const handleVehicleFieldChange = (event) => {
     const { name, value } = event.target

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 const findGroupKeyForMenu = (navigationTree, menuKey) => {
   const group = navigationTree.find(
@@ -15,17 +15,18 @@ function Sidebar({ activeMenu, navigationTree, onLogout, onSelectMenu }) {
   })
 
   // Si el modulo activo cambia a uno dentro de un grupo colapsado (por ejemplo, al entrar
-  // directo a una vista por default), se despliega ese grupo automaticamente.
-  useEffect(() => {
+  // directo a una vista por default), se despliega ese grupo automaticamente. Se ajusta el
+  // estado durante el render al cambiar la prop, sin un efecto (patron recomendado por React).
+  const [lastActiveMenu, setLastActiveMenu] = useState(activeMenu)
+
+  if (activeMenu !== lastActiveMenu) {
+    setLastActiveMenu(activeMenu)
     const groupKey = findGroupKeyForMenu(navigationTree, activeMenu)
 
-    if (!groupKey) {
-      return
+    if (groupKey && !expandedGroups.has(groupKey)) {
+      setExpandedGroups(new Set(expandedGroups).add(groupKey))
     }
-
-    setExpandedGroups((previous) => (previous.has(groupKey) ? previous : new Set(previous).add(groupKey)))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMenu])
+  }
 
   const toggleGroup = (groupKey) => {
     setExpandedGroups((previous) => {

@@ -158,15 +158,6 @@ function RoutesModule({ token, isActive, roleName }) {
   const [manifestDetailError, setManifestDetailError] = useState('')
 
   useEffect(() => {
-    if (!isActive) {
-      return
-    }
-
-    loadInitialData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, token])
-
-  useEffect(() => {
     if (!detailModalOpen || !detailRoute?.id_ruta) {
       return undefined
     }
@@ -218,6 +209,16 @@ function RoutesModule({ token, isActive, roleName }) {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+
+    // La carga cambia estado: se agenda fuera del cuerpo del efecto (regla set-state-in-effect).
+    queueMicrotask(loadInitialData)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, token])
 
   const gestionRoutes = routes.filter((route) => ROUTE_GESTION_STATES.has(route.estado))
 

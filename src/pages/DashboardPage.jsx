@@ -23,7 +23,7 @@ import { canAccessModule, getAllowedModules, getNavigationTree, MODULE_DEFINITIO
 const MOBILE_BREAKPOINT = 979
 
 function DashboardPage({ onLogout, session }) {
-  const [activeMenu, setActiveMenu] = useState('dashboard')
+  const [selectedMenu, setSelectedMenu] = useState('dashboard')
   const [isSidebarVisible, setIsSidebarVisible] = useState(() => {
     if (typeof window === 'undefined') {
       return true
@@ -53,18 +53,16 @@ function DashboardPage({ onLogout, session }) {
   const navigationTree = useMemo(() => getNavigationTree(roleName), [roleName])
   const defaultModuleKey = allowedModules[0]?.key || 'dashboard'
 
-  useEffect(() => {
-    if (!canAccessModule(roleName, activeMenu)) {
-      setActiveMenu(defaultModuleKey)
-    }
-  }, [activeMenu, defaultModuleKey, roleName])
+  // Si el rol no tiene acceso al modulo elegido, se muestra el modulo por defecto. Se deriva
+  // durante el render en lugar de corregir el estado con un efecto.
+  const activeMenu = canAccessModule(roleName, selectedMenu) ? selectedMenu : defaultModuleKey
 
   const handleMenuSelection = (menu) => {
     if (!canAccessModule(roleName, menu)) {
       return
     }
 
-    setActiveMenu(menu)
+    setSelectedMenu(menu)
 
     if (window.innerWidth <= MOBILE_BREAKPOINT) {
       setIsSidebarVisible(false)

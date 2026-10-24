@@ -73,15 +73,6 @@ function VehicleServicesModule({ token, isActive }) {
   const [errorMessage, setErrorMessage] = useState('')
   const [noticeMessage, setNoticeMessage] = useState('')
 
-  useEffect(() => {
-    if (!isActive) {
-      return
-    }
-
-    loadData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, token])
-
   const vehicleOptions = useMemo(() => vehicles, [vehicles])
   const serviceTypeOptions = useMemo(() => serviceTypes, [serviceTypes])
 
@@ -105,6 +96,16 @@ function VehicleServicesModule({ token, isActive }) {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+
+    // La carga cambia estado: se agenda fuera del cuerpo del efecto (regla set-state-in-effect).
+    queueMicrotask(loadData)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, token])
 
   const handleFieldChange = (event) => {
     const { name, value } = event.target

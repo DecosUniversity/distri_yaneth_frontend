@@ -27,15 +27,6 @@ function UsersModule({ token, isActive }) {
   const [usersError, setUsersError] = useState('')
   const [usersNotice, setUsersNotice] = useState('')
 
-  useEffect(() => {
-    if (!isActive) {
-      return
-    }
-
-    loadUsers()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, token])
-
   const loadUsers = async () => {
     setUsersError('')
     setIsUsersLoading(true)
@@ -49,6 +40,16 @@ function UsersModule({ token, isActive }) {
       setIsUsersLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+
+    // La carga cambia estado: se agenda fuera del cuerpo del efecto (regla set-state-in-effect).
+    queueMicrotask(loadUsers)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, token])
 
   const handleUserFieldChange = (event) => {
     const { name, value } = event.target

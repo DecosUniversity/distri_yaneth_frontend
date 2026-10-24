@@ -32,15 +32,6 @@ function GreenNetsModule({ token, isActive }) {
   const [isLoading, setIsLoading] = useState(false)
   const [moduleError, setModuleError] = useState('')
 
-  useEffect(() => {
-    if (!isActive) {
-      return
-    }
-
-    loadNets()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, token])
-
   const loadNets = async () => {
     setModuleError('')
     setIsLoading(true)
@@ -54,6 +45,16 @@ function GreenNetsModule({ token, isActive }) {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+
+    // La carga cambia estado: se agenda fuera del cuerpo del efecto (regla set-state-in-effect).
+    queueMicrotask(loadNets)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, token])
 
   const handleFilterChange = (event) => {
     const { name, value } = event.target

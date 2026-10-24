@@ -444,15 +444,6 @@ function OrdersModule({ token, isActive }) {
   const [isGeneratingReportPdf, setIsGeneratingReportPdf] = useState(false)
   const [isGeneratingReportExcel, setIsGeneratingReportExcel] = useState(false)
 
-  useEffect(() => {
-    if (!isActive) {
-      return
-    }
-
-    loadInitialData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, token])
-
   const loadInitialData = async () => {
     setModuleError('')
     setIsLoading(true)
@@ -473,6 +464,16 @@ function OrdersModule({ token, isActive }) {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+
+    // La carga cambia estado: se agenda fuera del cuerpo del efecto (regla set-state-in-effect).
+    queueMicrotask(loadInitialData)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, token])
 
   const loadReports = async (overrideFilters) => {
     setReportError('')

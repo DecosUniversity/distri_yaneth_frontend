@@ -82,15 +82,6 @@ function ClientsModule({ token, isActive }) {
   const [clientsError, setClientsError] = useState('')
   const [clientsNotice, setClientsNotice] = useState('')
 
-  useEffect(() => {
-    if (!isActive) {
-      return
-    }
-
-    loadClients()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, token])
-
   const loadClients = async () => {
     setClientsError('')
     setIsClientsLoading(true)
@@ -104,6 +95,16 @@ function ClientsModule({ token, isActive }) {
       setIsClientsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+
+    // La carga cambia estado: se agenda fuera del cuerpo del efecto (regla set-state-in-effect).
+    queueMicrotask(loadClients)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, token])
 
   const handleClientFieldChange = (event) => {
     const { name, value } = event.target

@@ -26,15 +26,6 @@ function ProvidersModule({ token, isActive }) {
   const [providersError, setProvidersError] = useState('')
   const [providersNotice, setProvidersNotice] = useState('')
 
-  useEffect(() => {
-    if (!isActive) {
-      return
-    }
-
-    loadProviders()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, token])
-
   const loadProviders = async () => {
     setProvidersError('')
     setIsProvidersLoading(true)
@@ -48,6 +39,16 @@ function ProvidersModule({ token, isActive }) {
       setIsProvidersLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+
+    // La carga cambia estado: se agenda fuera del cuerpo del efecto (regla set-state-in-effect).
+    queueMicrotask(loadProviders)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, token])
 
   const handleProviderFieldChange = (event) => {
     const { name, value } = event.target

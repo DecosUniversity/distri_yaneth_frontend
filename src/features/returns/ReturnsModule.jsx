@@ -43,15 +43,6 @@ function ReturnsModule({ token, isActive, roleName }) {
   const [receptionLine, setReceptionLine] = useState(null)
   const [receptionForm, setReceptionForm] = useState({ cantidad_devuelta: '', motivo: '' })
 
-  useEffect(() => {
-    if (!isActive) {
-      return
-    }
-
-    loadInitialData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, token])
-
   const loadInitialData = async () => {
     setModuleError('')
     setIsLoading(true)
@@ -72,6 +63,16 @@ function ReturnsModule({ token, isActive, roleName }) {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!isActive) {
+      return
+    }
+
+    // La carga cambia estado: se agenda fuera del cuerpo del efecto (regla set-state-in-effect).
+    queueMicrotask(loadInitialData)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, token])
 
   const consultaReturns = useMemo(() => {
     const term = consultaSearchTerm.trim().toLowerCase()
